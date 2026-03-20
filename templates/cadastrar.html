@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cadastrar Material Esportivo</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+</head>
+<body>
+<div class="container">
+    <h1>➕ Cadastrar Material Esportivo</h1>
+    
+    <form method="post">
+        <input type="text" name="nome" placeholder="Nome do material (ex: Bola de Futebol)" required>
+        
+        <label for="categoria">Categoria:</label>
+        <select name="categoria" required>
+            <option value="">Selecione uma categoria</option>
+            {% for categoria in categorias %}
+            <option value="{{ categoria }}">{{ categoria }}</option>
+            {% endfor %}
+        </select>
+        
+        <input type="number" name="quantidade" placeholder="Quantidade total" min="1" required>
+        
+        <textarea name="especificacoes" placeholder="Especificações (tamanho, cor, marca, etc.)" rows="4"></textarea>
+        
+        <input type="submit" value="✅ Cadastrar">
+    </form>
+    
+    <a class="btn" href="{{ url_for('index') }}">⬅️ Voltar</a>
+</div>
+</body>
+</html>

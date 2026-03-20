@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Emprestar Material</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+</head>
+
+<body>
+    <div class="container">
+        <h1>📤 Empréstimo de Material Esportivo</h1>
+        
+        <div style="background: #e0f2f1; padding: 20px; border-radius: 15px; margin-bottom: 20px;">
+            <h3>{{ material["nome"] }}</h3>
+            <p><strong>Categoria:</strong> {{ material["categoria"] }}</p>
+            {% if material["especificacoes"] %}
+            <p><strong>Especificações:</strong> {{ material["especificacoes"] }}</p>
+            {% endif %}
+            <p><strong>Disponíveis:</strong> {{ material["disponiveis"] }} / {{ material["quantidade_total"] }}</p>
+        </div>
+
+        <form method="post">
+            <input type="text" name="aluno" placeholder="Nome do Aluno" required>
+            
+            <label for="turma">Turma:</label>
+            <select name="turma" required>
+                {% for i in range(1, turmas|length + 1) %}
+                <option value="{{ i }}">{{ turmas[i-1] }}</option>
+                {% endfor %}
+            </select>
+            
+            <input type="submit" value="✅ Confirmar Empréstimo">
+        </form>
+
+        <a class="btn" href="{{ url_for('index') }}">❌ Cancelar</a>
+    </div>
+</body>
+
+</html>

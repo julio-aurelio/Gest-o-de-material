@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Gestão de Materiais Esportivos</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+</head>
+
+<body>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div id="flash-container">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="container">
+        <h1>📋 Materiais Esportivos</h1>
+        <p style="text-align:center;">
+            Total de materiais cadastrados: {{ total_materiais }} | 
+            Total emprestados: {{ total_emprestados }}
+        </p>
+        <br>
+        <nav>
+            <a href="{{ url_for('index') }}">📦 Todos Materiais</a>
+            <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
+            <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
+        </nav>
+
+        <form method="get" action="{{ url_for('buscar') }}" id="search-form">
+            <input type="text" name="q" placeholder="Buscar por nome ou categoria" value="{{ termo|default('') }}">
+            <input type="submit" value="🔍">
+            <ul id="suggestions"></ul>
+        </form>
+
+        <ul>
+            {% for material in materiais %}
+            <li class="card-material">
+                <h3>{{ material["nome"] }}</h3>
+                <p><strong>Categoria:</strong> {{ material["categoria"] }}</p>
+                {% if material["especificacoes"] %}
+                <p><strong>Especificações:</strong> {{ material["especificacoes"] }}</p>
+                {% endif %}
+                <p>Disponíveis: {{ material["disponiveis"] }} / {{ material["quantidade_total"] }}</p>
+
+                {% if material["disponiveis"] > 0 %}
+                <a class="btn" href="{{ url_for('emprestar', material_id=material["id"]) }}">Emprestar</a>
+                {% else %}
+                <span class="indisponivel">Indisponível</span>
+                {% endif %}
+                <a class="btn" href="{{ url_for('atualizar', material_id=material["id"]) }}">Atualizar</a>
+                <a href="#" class="btn" onclick="excluirMaterial({{ material["id"] }})">Excluir</a>
+            </li>
+            {% endfor %}
+        </ul>
+
+        <script>
+            const input = document.querySelector('input[name="q"]');
+            const suggestions = document.getElementById('suggestions');
+            
+            input.addEventListener('input', async () => {
+                const termo = input.value;
+                if (!termo) { 
+                    suggestions.style.display = 'none'; 
+                    suggestions.innerHTML = ''; 
+                    return; 
+                }
+                const res = await fetch(`/autocomplete?q=${termo}`);
+                const data = await res.json();
+                suggestions.innerHTML = '';
+                if (data.length > 0) {
+                    data.forEach(item => {
+                        const li = document.createElement('li');
+                        li.textContent = item;
+                        li.onclick = () => { 
+                            input.value = item; 
+                            suggestions.style.display = 'none'; 
+                        };
+                        suggestions.appendChild(li);
+                    });
+                    suggestions.style.display = 'block';
+                } else { 
+                    suggestions.style.display = 'none'; 
+                }
+            });
+
+            function excluirMaterial(materialId) {
+                if (confirm('Tem certeza que deseja excluir este material?')) {
+                    fetch('/excluir/' + materialId, { method: 'POST' })
+                        .then(() => location.reload());
+                }
+            }
+        </script>
+    </div>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Materiais Emprestados</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+</head>
+
+<body>
+    <div class="container">
+        <h1>📋 Materiais Esportivos Emprestados</h1>
+        <p style="text-align:center;">
+            Total de materiais cadastrados: {{ total_materiais }} | 
+            Total emprestados: {{ total_emprestados }}
+        </p>
+        <br>
+        <nav>
+            <a href="{{ url_for('index') }}">📦 Todos Materiais</a>
+            <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
+            <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
+        </nav>
+
+        <form method="get" action="{{ url_for('buscar') }}" id="search-form">
+            <input type="text" name="q" placeholder="Buscar por nome ou categoria" value="{{ termo|default('') }}">
+            <input type="submit" value="🔍">
+            <ul id="suggestions"></ul>
+        </form>
+
+        {% if emprestimos %}
+        <ul>
+            {% for emp in emprestimos %}
+            <li>
+                <h3>{{ emp.materiais.nome }}</h3>
+                <p><strong>Categoria:</strong> {{ emp.materiais.categoria }}</p>
+                {% if emp.materiais.especificacoes %}
+                <p><strong>Especificações:</strong> {{ emp.materiais.especificacoes }}</p>
+                {% endif %}
+                <span class="emprestado">👤 Emprestado para {{ emp.aluno }} ({{ emp.turma }})</span>
+                <p><strong>📅 Data empréstimo:</strong> {{ emp.data_emprestimo[:10] }}</p>
+                <p><strong>⏰ Devolução prevista:</strong> {{ emp.data_devolucao_prevista }}</p>
+                <a href="#" class="btn" onclick="
+                    if (confirm('Tem certeza que deseja registrar a devolução deste material?')) {
+                        fetch('{{ url_for('devolver', emprestimo_id=emp.id) }}', { method: 'POST' })
+                        .then(() => location.reload());
+                    }">🔄 Registrar Devolução</a>
+                <a class="btn" href="{{ url_for('atualizar', material_id=emp.material_id) }}">✏️ Atualizar Material</a>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div style="text-align: center; padding: 50px;">
+            <p>✨ Nenhum material está emprestado no momento! ✨</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+       const input = document.querySelector('input[name="q"]');
+       const suggestions = document.getElementById('suggestions');
+       
+       input.addEventListener('input', async () => {
+           const termo = input.value;
+           if (!termo) { 
+               suggestions.style.display='none'; 
+               suggestions.innerHTML=''; 
+               return; 
+           }
+           const res = await fetch(`/autocomplete?q=${termo}`);
+           const data = await res.json();
+           suggestions.innerHTML='';
+           if (data.length>0){
+               data.forEach(item => {
+                   const li = document.createElement('li');
+                   li.textContent = item;
+                   li.onclick = ()=>{ 
+                       input.value=item; 
+                       suggestions.style.display='none'; 
+                   };
+                   suggestions.appendChild(li);
+               });
+               suggestions.style.display='block';
+           } else { 
+               suggestions.style.display='none'; 
+           }
+       });
+    </script>
+</body>
+
+</html>

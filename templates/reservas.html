@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Materiais Reservados</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+</head>
+
+<body>
+    <div class="container">
+        <h1>⏳ Materiais Esportivos Reservados</h1>
+        <p style="text-align:center;">
+            Total de reservas: {{ total_reservas }}
+        </p>
+        <br>
+        <nav>
+            <a href="{{ url_for('index') }}">📦 Todos Materiais</a>
+            <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
+            <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
+        </nav>
+
+        {% if reservas %}
+        <ul>
+            {% for res in reservas %}
+            <li>
+                <h3>{{ res.materiais.nome }}</h3>
+                <p><strong>Categoria:</strong> {{ res.materiais.categoria }}</p>
+                {% if res.materiais.especificacoes %}
+                <p><strong>Especificações:</strong> {{ res.materiais.especificacoes }}</p>
+                {% endif %}
+                <span class="reservado">👤 Reservado para {{ res.aluno }} ({{ res.turma }})</span>
+                <p><strong>📅 Data da reserva:</strong> {{ res.data_reserva[:10] }}</p>
+                <p><small>⚠️ Será emprestado assim que o material for devolvido</small></p>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div style="text-align: center; padding: 50px;">
+            <p>✨ Nenhum material está reservado no momento! ✨</p>
+        </div>
+        {% endif %}
+        
+        <a class="btn" href="{{ url_for('index') }}">⬅️ Voltar</a>
+    </div>
+</body>
+
+</html>

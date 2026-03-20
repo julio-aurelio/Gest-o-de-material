@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Atualizar Material</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+</head>
+<body>
+<div class="container">
+    <h1>✏️ Atualizar Material</h1>
+
+    <form method="post">
+        <input type="text" name="nome" value="{{ material.nome }}" required>
+        
+        <label for="categoria">Categoria:</label>
+        <select name="categoria" required>
+            {% for categoria in categorias %}
+            <option value="{{ categoria }}" {% if material.categoria == categoria %}selected{% endif %}>
+                {{ categoria }}
+            </option>
+            {% endfor %}
+        </select>
+        
+        <input type="number" name="quantidade" value="{{ material.quantidade_total }}" min="1" required>
+        
+        <textarea name="especificacoes" rows="4">{{ material.especificacoes or '' }}</textarea>
+
+        <input type="submit" value="💾 Salvar Alterações">
+    </form>
+
+    <a class="btn" href="{{ url_for('index') }}">⬅️ Voltar</a>
+</div>
+</body>
+</html>
