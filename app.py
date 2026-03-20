@@ -6,14 +6,12 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 
 # ==================== CONFIGURAÇÕES ====================
-# IMPORTANTE: Coloque sua SECRET_KEY aqui (use uma chave segura)
-app.secret_key = "sua_chave_secreta_aqui_mude_isso_para_algo_seguro"
+app.secret_key = os.environ.get('SECRET_KEY', 'sua_chave_secreta_aqui_mude_isso_para_algo_seguro')
 
 # Configurações do Supabase
 SUPABASE_URL = "https://pnpybnpbqwiteocpbcbb.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBucHlibnBicXdpdGVvY3BiY2JiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDU0ODIsImV4cCI6MjA4OTU4MTQ4Mn0.LkBufgdceo1Qijj06g0dY2TyQmT7bOQSR9nPVpFUKm8"
 
-# Cria o cliente Supabase (apenas uma vez!)
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ==================== CATEGORIAS ====================
@@ -40,7 +38,8 @@ def get_totais():
     materiais = supabase.table("materiais").select("id,quantidade_total,emprestimos(id)").execute().data
     total_materiais = sum(m.get("quantidade_total") or 0 for m in materiais)
     total_emprestados = sum(len(m.get("emprestimos", [])) for m in materiais)
-    total_reservados = supabase.table("reservas").select("id").execute().count or 0
+    reservas = supabase.table("reservas").select("id").execute()
+    total_reservados = len(reservas.data) if reservas.data else 0
     return total_materiais, total_emprestados, total_reservados
 
 # ==================== ROTA PRINCIPAL ====================
@@ -224,12 +223,15 @@ def buscar():
 
     total_materiais = sum(m.get("quantidade_total") or 0 for m in materiais)
     total_emprestados = sum(len(m.get("emprestimos", [])) for m in materiais)
+    reservas = supabase.table("reservas").select("id").execute()
+    total_reservados = len(reservas.data) if reservas.data else 0
 
     return render_template("index.html",
                            materiais=materiais,
                            termo=termo,
                            total_materiais=total_materiais,
                            total_emprestados=total_emprestados,
+                           total_reservados=total_reservados,
                            categorias=CATEGORIAS)
 
 @app.route("/autocomplete")
@@ -265,7 +267,3 @@ def reservas():
         .order("data_reserva").execute().data
     total_reservas = len(reservas_list)
     return render_template("reservas.html", reservas=reservas_list, total_reservas=total_reservas)
-
-# ==================== RODAR APLICAÇÃO ====================
-if __name__ == "__main__":
-    app.run(debug=True)
