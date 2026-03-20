@@ -5,15 +5,15 @@ from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# Configurações do Supabase - PEGA DAS VARIÁVEIS DE AMBIENTE DA VERCEL
+# ==================== CONFIGURAÇÕES ====================
+# IMPORTANTE: Coloque sua SECRET_KEY aqui (use uma chave segura)
+app.secret_key = "sua_chave_secreta_aqui_mude_isso_para_algo_seguro"
+
+# Configurações do Supabase
 SUPABASE_URL = "https://pnpybnpbqwiteocpbcbb.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBucHlibnBicXdpdGVvY3BiY2JiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDU0ODIsImV4cCI6MjA4OTU4MTQ4Mn0.LkBufgdceo1Qijj06g0dY2TyQmT7bOQSR9nPVpFUKm8"
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# VERIFICAÇÃO IMPORTANTE - Se não tiver as variáveis, dá erro claro
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise Exception("SUPABASE_URL e SUPABASE_KEY não configuradas! Configure as variáveis de ambiente na Vercel.")
-
+# Cria o cliente Supabase (apenas uma vez!)
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ==================== CATEGORIAS ====================
@@ -266,10 +266,6 @@ def reservas():
     total_reservas = len(reservas_list)
     return render_template("reservas.html", reservas=reservas_list, total_reservas=total_reservas)
 
-# ==================== ISSO É CRUCIAL PARA VERCEL ====================
-# Exporta a aplicação para a Vercel
-app = app
-
-# Se não estiver na Vercel, roda localmente
+# ==================== RODAR APLICAÇÃO ====================
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True)
