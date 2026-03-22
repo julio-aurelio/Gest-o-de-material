@@ -1,16 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Cadastrar Material Esportivo</title>
+    <title>Cadastrar Material Educacionais</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
 </head>
 <body>
 <div class="container">
-    <h1>➕ Cadastrar Material Esportivo</h1>
+    <h1>➕ Cadastrar Material Educacionais</h1>
     
     <form method="post">
-        <input type="text" name="nome" placeholder="Nome do material (ex: Bola de Futebol)" required>
+        <input type="text" name="nome" placeholder="Nome do material (ex: Bola de Futebol, cromebook...)" required>
         
         <label for="categoria">Categoria:</label>
         <select name="categoria" required>

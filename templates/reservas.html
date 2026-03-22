@@ -9,7 +9,7 @@
 
 <body>
     <div class="container">
-        <h1>⏳ Materiais Esportivos Reservados</h1>
+        <h1>⏳ Materiais Reservados</h1>
         <p style="text-align:center;">
             Total de reservas: {{ total_reservas }}
         </p>
@@ -18,6 +18,7 @@
             <a href="{{ url_for('index') }}">📦 Todos Materiais</a>
             <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
             <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
+            <a href="{{ url_for('reservas') }}">⏳ Reservas</a>
         </nav>
 
         {% if reservas %}
@@ -31,7 +32,16 @@
                 {% endif %}
                 <span class="reservado">👤 Reservado para {{ res.aluno }} ({{ res.turma }})</span>
                 <p><strong>📅 Data da reserva:</strong> {{ res.data_reserva[:10] }}</p>
-                <p><small>⚠️ Será emprestado assim que o material for devolvido</small></p>
+                <p><strong>📆 Data de retirada:</strong> {{ res.data_retirada }}</p>
+                <p><strong>⏰ Horário:</strong> {{ res.horario }}</p>
+                <p><strong>📦 Quantidade reservada:</strong> {{ res.quantidade_reservada }} unidade(s)</p>
+                <p><strong>🕐 Turno:</strong> {{ res.turno }}</p>
+                <p><small>⚠️ Será emprestado no dia {{ res.data_retirada }} assim que o material estiver
+                        disponível</small></p>
+                <div style="margin-top: 10px;">
+                    <a class="btn" href="{{ url_for('atualizar_reserva', reserva_id=res.id) }}">✏️ Editar</a>
+                    <a href="#" class="btn" onclick="cancelarReserva({{ res.id }})">❌ Cancelar</a>
+                </div>
             </li>
             {% endfor %}
         </ul>
@@ -40,9 +50,18 @@
             <p>✨ Nenhum material está reservado no momento! ✨</p>
         </div>
         {% endif %}
-        
+
         <a class="btn" href="{{ url_for('index') }}">⬅️ Voltar</a>
     </div>
+
+    <script>
+        function cancelarReserva(reservaId) {
+            if (confirm('Tem certeza que deseja cancelar esta reserva?')) {
+                fetch('/cancelar_reserva/' + reservaId, { method: 'POST' })
+                    .then(() => location.reload());
+            }
+        }
+    </script>
 </body>
 
 </html>

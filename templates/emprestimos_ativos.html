@@ -9,7 +9,7 @@
 
 <body>
     <div class="container">
-        <h1>📋 Materiais Esportivos Emprestados</h1>
+        <h1>📋 Materiais Educacionais Emprestados</h1>
         <p style="text-align:center;">
             Total de materiais cadastrados: {{ total_materiais }} | 
             Total emprestados: {{ total_emprestados }}
@@ -19,6 +19,7 @@
             <a href="{{ url_for('index') }}">📦 Todos Materiais</a>
             <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
             <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
+            <a href="{{ url_for('reservas') }}">⏳ Reservas</a>
         </nav>
 
         <form method="get" action="{{ url_for('buscar') }}" id="search-form">
@@ -38,7 +39,9 @@
                 {% endif %}
                 <span class="emprestado">👤 Emprestado para {{ emp.aluno }} ({{ emp.turma }})</span>
                 <p><strong>📅 Data empréstimo:</strong> {{ emp.data_emprestimo[:10] }}</p>
-                <p><strong>⏰ Devolução prevista:</strong> {{ emp.data_devolucao_prevista }}</p>
+                <p><strong>⏰ Horário:</strong> {{ emp.horario }}</p>
+                <p><strong>📦 Quantidade:</strong> {{ emp.quantidade_emprestada }} unidade(s)</p>
+                <p><strong>🕐 Turno:</strong> {{ emp.turno }}</p>
                 <a href="#" class="btn" onclick="
                     if (confirm('Tem certeza que deseja registrar a devolução deste material?')) {
                         fetch('{{ url_for('devolver', emprestimo_id=emp.id) }}', { method: 'POST' })

@@ -5,36 +5,86 @@
     <title>Emprestar Material</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+    <style>
+        
+    </style>
 </head>
 
 <body>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div id="flash-container">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
     <div class="container">
-        <h1>📤 Empréstimo de Material Esportivo</h1>
+        <h1>📤 Empréstimo/Reserva de Material</h1>
         
-        <div style="background: #e0f2f1; padding: 20px; border-radius: 15px; margin-bottom: 20px;">
+        <div class="info-box">
             <h3>{{ material["nome"] }}</h3>
             <p><strong>Categoria:</strong> {{ material["categoria"] }}</p>
             {% if material["especificacoes"] %}
             <p><strong>Especificações:</strong> {{ material["especificacoes"] }}</p>
             {% endif %}
-            <p><strong>Disponíveis:</strong> {{ material["disponiveis"] }} / {{ material["quantidade_total"] }}</p>
+            <p><strong>Total disponível:</strong> {{ material["quantidade_total"] }} unidades</p>
+            
+            <div class="disponibilidade-box">
+                <strong>📊 Disponibilidade atual:</strong><br>
+                🌅 Manhã: {{ disponiveis_manha }} unidades<br>
+                🌙 Tarde: {{ disponiveis_tarde }} unidades
+            </div>
         </div>
 
         <form method="post">
-            <input type="text" name="aluno" placeholder="Nome do Aluno" required>
+            <input type="text" name="aluno" placeholder="Nome do Professor" required>
             
             <label for="turma">Turma:</label>
             <select name="turma" required>
-                {% for i in range(1, turmas|length + 1) %}
-                <option value="{{ i }}">{{ turmas[i-1] }}</option>
+                <optgroup label="🌅 Manhã">
+                    {% for turma in turmas_manha %}
+                    <option value="{{ turma }}">{{ turma }}</option>
+                    {% endfor %}
+                </optgroup>
+                <optgroup label="🌙 Tarde">
+                    {% for turma in turmas_tarde %}
+                    <option value="{{ turma }}">{{ turma }}</option>
+                    {% endfor %}
+                </optgroup>
+            </select>
+            
+            <label for="horario">Horário/Aula:</label>
+            <select name="horario" required>
+                {% for i in range(horarios|length) %}
+                <option value="{{ i }}">{{ horarios[i] }}</option>
                 {% endfor %}
             </select>
             
-            <input type="submit" value="✅ Confirmar Empréstimo">
+            <label for="quantidade">Quantidade:</label>
+            <input type="number" name="quantidade" id="quantidade" min="1" max="{{ material['quantidade_total'] }}" value="1" required>
+            
+            <label for="data_retirada">Data de Retirada:</label>
+            <input type="date" name="data_retirada" id="data_retirada" value="{{ hoje }}" min="{{ hoje }}" required>
+            <div class="data-info">
+                ℹ️ Se escolher a data de hoje, o material será emprestado imediatamente.<br>
+                📅 Se escolher uma data futura, será feita uma reserva.
+            </div>
+            
+            <input type="submit" value="✅ Confirmar">
         </form>
 
         <a class="btn" href="{{ url_for('index') }}">❌ Cancelar</a>
     </div>
+    
+    <script>
+        // Validação: não permitir data passada
+        const dataInput = document.getElementById('data_retirada');
+        const hoje = new Date().toISOString().split('T')[0];
+        dataInput.min = hoje;
+    </script>
 </body>
 
 </html>
