@@ -1,21 +1,45 @@
 <!DOCTYPE html>
 <html>
-
 <head>
     <title>Materiais Reservados</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
 </head>
-
 <body>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div id="flash-container">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
     <div class="container">
-        <h1>⏳ Materiais Reservados</h1>
-        <p style="text-align:center;">
-            Total de reservas: {{ total_reservas }}
-        </p>
-        <br>
+        <div class="page-header">
+            <h1>⏳ Materiais Reservados</h1>
+            <div class="user-welcome">
+                <span>👋 Olá, {{ session.usuario_nome }}!</span>
+                {% if session.role == 'admin' %}
+                <span class="badge-admin">Admin</span>
+                {% else %}
+                <span class="badge-professor">Professor</span>
+                {% endif %}
+                <a href="{{ url_for('logout') }}" class="logout-link">🚪 Sair</a>
+            </div>
+        </div>
+        
+        <div class="stats-bar">
+            ⏳ Total de reservas: <strong>{{ total_reservas }}</strong>
+        </div>
+
         <nav>
             <a href="{{ url_for('index') }}">📦 Todos Materiais</a>
+            {% if session.role == 'admin' %}
+            <a href="{{ url_for('listar_usuarios') }}">👥 Usuários</a>
+            <a href="{{ url_for('admin_dashboard') }}">📊 Dashboard</a>
+            {% endif %}
             <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
             <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
             <a href="{{ url_for('reservas') }}">⏳ Reservas</a>
@@ -31,17 +55,21 @@
                 <p><strong>Especificações:</strong> {{ res.materiais.especificacoes }}</p>
                 {% endif %}
                 <span class="reservado">👤 Reservado para {{ res.aluno }} ({{ res.turma }})</span>
+                <p><strong>👨‍🏫 Professor responsável:</strong> {{ res.usuario_nome or res.aluno or 'Não identificado' }}</p>
                 <p><strong>📅 Data da reserva:</strong> {{ res.data_reserva[:10] }}</p>
                 <p><strong>📆 Data de retirada:</strong> {{ res.data_retirada }}</p>
                 <p><strong>⏰ Horário:</strong> {{ res.horario }}</p>
                 <p><strong>📦 Quantidade reservada:</strong> {{ res.quantidade_reservada }} unidade(s)</p>
                 <p><strong>🕐 Turno:</strong> {{ res.turno }}</p>
-                <p><small>⚠️ Será emprestado no dia {{ res.data_retirada }} assim que o material estiver
-                        disponível</small></p>
+                <p><small>⚠️ Será emprestado no dia {{ res.data_retirada }} assim que o material estiver disponível</small></p>
+                
+                <!-- Botões de editar/cancelar - só aparece para quem criou ou admin -->
+                {% if session.role == 'admin' or res.usuario_id == session.usuario_id %}
                 <div style="margin-top: 10px;">
                     <a class="btn" href="{{ url_for('atualizar_reserva', reserva_id=res.id) }}">✏️ Editar</a>
                     <a href="#" class="btn" onclick="cancelarReserva({{ res.id }})">❌ Cancelar</a>
                 </div>
+                {% endif %}
             </li>
             {% endfor %}
         </ul>
@@ -51,7 +79,7 @@
         </div>
         {% endif %}
 
-        <a class="btn" href="{{ url_for('index') }}">⬅️ Voltar</a>
+        <a class="btn" href="{{ url_for('index') }}" style="margin-top: 20px;">⬅️ Voltar</a>
     </div>
 
     <script>
@@ -63,5 +91,4 @@
         }
     </script>
 </body>
-
 </html>

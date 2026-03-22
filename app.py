@@ -1,11 +1,10 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 from supabase import create_client
 from datetime import datetime, timedelta
+from functools import wraps
 
 app = Flask(__name__)
-
-# ==================== CONFIGURAÇÕES ====================
 app.secret_key = "sua_chave_secreta_aqui_mude_isso_para_algo_seguro"
 
 SUPABASE_URL = "https://pnpybnpbqwiteocpbcbb.supabase.co"
@@ -13,23 +12,68 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ==================== CATEGORIAS ====================
-CATEGORIAS = [
-    "Esporte", "Educacional", "Outros"
-]
+# ==================== CACHE OTIMIZADO ====================
+class SimpleCache:
+    def __init__(self, timeout=300):
+        self.cache = {}
+        self.timeout = timeout
+    
+    def get(self, key):
+        if key in self.cache:
+            data, timestamp = self.cache[key]
+            if datetime.now().timestamp() - timestamp < self.timeout:
+                return data
+            del self.cache[key]
+        return None
+    
+    def set(self, key, value):
+        self.cache[key] = (value, datetime.now().timestamp())
+    
+    def clear(self):
+        self.cache.clear()
 
-HORARIOS = [
-    "1ª Aula",
-    "2ª Aula", 
-    "3ª Aula",
-    "4ª Aula",
-    "5ª Aula"
-]
+cache = SimpleCache(timeout=300)
 
+# ==================== DECORADORES ====================
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'usuario_id' not in session:
+            flash("Por favor, faça login para acessar esta página.", "warning")
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'usuario_id' not in session:
+            flash("Por favor, faça login para acessar esta página.", "warning")
+            return redirect(url_for('login'))
+        if session.get('role') != 'admin':
+            flash("Acesso negado. Você não tem permissão de administrador.", "error")
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def pode_editar_reserva(reserva_id, usuario_id, role):
+    if role == 'admin':
+        return True
+    reserva = supabase.table("reservas").select("usuario_id").eq("id", reserva_id).single().execute().data
+    return reserva and reserva.get("usuario_id") == usuario_id
+
+def pode_devolver_emprestimo(emprestimo_id, usuario_id, role):
+    if role == 'admin':
+        return True
+    emprestimo = supabase.table("emprestimos").select("usuario_id").eq("id", emprestimo_id).single().execute().data
+    return emprestimo and emprestimo.get("usuario_id") == usuario_id
+
+# ==================== CONFIGURAÇÕES ====================
+CATEGORIAS = ["Esporte", "Educacional", "Outros"]
+HORARIOS = ["1ª Aula", "2ª Aula", "3ª Aula", "4ª Aula", "5ª Aula"]
 TURMAS_MANHA = ["8ºA", "8ºB", "8ºC", "8ºD", "9ºA", "9ºB", "9ºC", "9ºD"]
 TURMAS_TARDE = ["6ºA", "6ºB", "6ºC", "6ºD", "6ºE", "7ºA", "7ºB", "7ºC"]
 
-# ==================== FUNÇÕES AUXILIARES ====================
 def get_turno_by_turma(turma):
     if turma in TURMAS_MANHA:
         return "Manhã"
@@ -37,52 +81,99 @@ def get_turno_by_turma(turma):
         return "Tarde"
     return "Manhã"
 
-def verificar_conflito_horario(material_id, data, turno, horario, reserva_id=None):
-    """
-    Verifica se já existe reserva ou empréstimo para o mesmo 
-    (data + turno + horário)
-    """
-    # Verificar empréstimos ativos para essa data e horário
+# ==================== FUNÇÕES OTIMIZADAS ====================
+def get_todos_dados():
+    """Busca TODOS os dados de uma vez e processa em memória"""
+    cache_key = "todos_dados"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+    
+    hoje = datetime.now().strftime("%Y-%m-%d")
+    
+    # Buscar tudo em paralelo (3 consultas apenas)
+    materiais = supabase.table("materiais").select("*").execute().data
     emprestimos = supabase.table("emprestimos")\
-        .select("id")\
-        .eq("material_id", material_id)\
-        .eq("data_emprestimo_data", data)\
-        .eq("turno", turno)\
-        .eq("horario", horario)\
+        .select("material_id, turno, horario, quantidade_emprestada, data_emprestimo_data")\
         .is_("data_devolucao_real", "null")\
         .execute().data
+    reservas = supabase.table("reservas")\
+        .select("material_id, turno, horario, quantidade_reservada, data_retirada")\
+        .execute().data
     
-    if emprestimos:
-        return True, "Já existe um empréstimo para este horário nesta data."
+    # Criar índice em memória para buscas rápidas
+    uso = {}
     
-    # Verificar reservas para essa data e horário
-    query = supabase.table("reservas")\
-        .select("id")\
-        .eq("material_id", material_id)\
-        .eq("data_retirada", data)\
-        .eq("turno", turno)\
-        .eq("horario", horario)
+    # Adicionar empréstimos ao índice
+    for e in emprestimos:
+        if e.get("data_emprestimo_data") == hoje:
+            key = f"{e['material_id']}_{e['turno']}_{e['horario']}"
+            uso[key] = uso.get(key, 0) + e.get("quantidade_emprestada", 1)
     
-    # Se for atualização, ignorar a própria reserva
-    if reserva_id:
-        query = query.neq("id", reserva_id)
+    # Adicionar reservas ao índice
+    for r in reservas:
+        if r.get("data_retirada") == hoje:
+            key = f"{r['material_id']}_{r['turno']}_{r['horario']}"
+            uso[key] = uso.get(key, 0) + r.get("quantidade_reservada", 1)
     
-    reservas = query.execute().data
+    # Processar materiais em memória
+    for material in materiais:
+        total = material["quantidade_total"]
+        horarios_manha = []
+        horarios_tarde = []
+        total_disponivel_manha = 0
+        total_disponivel_tarde = 0
+        
+        for horario in HORARIOS:
+            # Manhã
+            usado_manha = uso.get(f"{material['id']}_Manhã_{horario}", 0)
+            disp_manha = total - usado_manha
+            if disp_manha > 0:
+                horarios_manha.append(horario)
+                total_disponivel_manha += disp_manha
+            
+            # Tarde
+            usado_tarde = uso.get(f"{material['id']}_Tarde_{horario}", 0)
+            disp_tarde = total - usado_tarde
+            if disp_tarde > 0:
+                horarios_tarde.append(horario)
+                total_disponivel_tarde += disp_tarde
+        
+        material["horarios_manha_hoje"] = horarios_manha
+        material["horarios_tarde_hoje"] = horarios_tarde
+        material["total"] = total
+        material["disponiveis_manha"] = total_disponivel_manha
+        material["disponiveis_tarde"] = total_disponivel_tarde
+        material["disponiveis"] = total_disponivel_manha + total_disponivel_tarde
     
-    if reservas:
-        return True, "Já existe uma reserva para este horário nesta data."
+    # Totais
+    total_materiais = sum(m["quantidade_total"] for m in materiais)
+    total_emprestados = len(emprestimos)
+    total_reservados = len(reservas)
     
-    return False, ""
+    resultado = {
+        'materiais': materiais,
+        'total_materiais': total_materiais,
+        'total_emprestados': total_emprestados,
+        'total_reservados': total_reservados
+    }
+    
+    cache.set(cache_key, resultado)
+    return resultado
 
-def verificar_disponibilidade_quantidade(material_id, data, turno, horario, quantidade_solicitada):
-    """Verifica se há quantidade suficiente disponível para a data"""
+def get_disponibilidade_por_horario(material_id, data, turno, horario):
+    """Versão rápida com cache"""
+    cache_key = f"disp_{material_id}_{data}_{turno}_{horario}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    
     material = supabase.table("materiais").select("quantidade_total").eq("id", material_id).single().execute().data
     if not material:
-        return False, 0
+        return 0
     
     total = material["quantidade_total"]
     
-    # Buscar empréstimos para a data específica
     emprestimos = supabase.table("emprestimos")\
         .select("quantidade_emprestada")\
         .eq("material_id", material_id)\
@@ -92,9 +183,6 @@ def verificar_disponibilidade_quantidade(material_id, data, turno, horario, quan
         .is_("data_devolucao_real", "null")\
         .execute().data
     
-    total_emprestado = sum(e.get("quantidade_emprestada", 1) for e in emprestimos)
-    
-    # Buscar reservas para a data específica
     reservas = supabase.table("reservas")\
         .select("quantidade_reservada")\
         .eq("material_id", material_id)\
@@ -103,77 +191,104 @@ def verificar_disponibilidade_quantidade(material_id, data, turno, horario, quan
         .eq("horario", horario)\
         .execute().data
     
+    total_emprestado = sum(e.get("quantidade_emprestada", 1) for e in emprestimos)
     total_reservado = sum(r.get("quantidade_reservada", 1) for r in reservas)
-    
     disponivel = total - total_emprestado - total_reservado
-    return disponivel >= quantidade_solicitada, disponivel
+    
+    cache.set(cache_key, disponivel)
+    return disponivel
 
-def calcular_disponiveis_hoje(material_id, turno):
-    """Calcula disponibilidade para hoje (apenas empréstimos ativos)"""
-    material = supabase.table("materiais").select("quantidade_total").eq("id", material_id).single().execute().data
-    if not material:
-        return 0
+# ==================== ROTAS DE AUTENTICAÇÃO ====================
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form["email"].strip()
+        senha = request.form["senha"].strip()
+        
+        usuario = supabase.table("usuarios")\
+            .select("*")\
+            .eq("email", email)\
+            .execute().data
+        
+        if usuario and usuario[0]["senha"] == senha:
+            session['usuario_id'] = usuario[0]["id"]
+            session['usuario_nome'] = usuario[0]["nome"]
+            session['usuario_email'] = usuario[0]["email"]
+            session['role'] = usuario[0]["role"]
+            flash(f"Bem-vindo, {usuario[0]['nome']}!", "success")
+            return redirect(url_for("index"))
+        else:
+            flash("Email ou senha incorretos.", "error")
     
-    total = material["quantidade_total"]
-    hoje = datetime.now().strftime("%Y-%m-%d")
-    
-    # Empréstimos ativos de hoje
-    emprestimos_ativos = supabase.table("emprestimos")\
-        .select("quantidade_emprestada")\
-        .eq("material_id", material_id)\
-        .eq("data_emprestimo_data", hoje)\
-        .eq("turno", turno)\
-        .is_("data_devolucao_real", "null")\
-        .execute().data
-    
-    total_emprestado = sum(e.get("quantidade_emprestada", 1) for e in emprestimos_ativos)
-    
-    return total - total_emprestado
+    return render_template("login.html")
 
-def get_materiais_com_disponiveis():
-    """Busca materiais com disponibilidade para HOJE"""
-    materiais = supabase.table("materiais").select("*").execute().data
-    hoje = datetime.now().strftime("%Y-%m-%d")
-    
-    for material in materiais:
-        material["disponiveis_manha"] = calcular_disponiveis_hoje(material["id"], "Manhã")
-        material["disponiveis_tarde"] = calcular_disponiveis_hoje(material["id"], "Tarde")
-        material["total"] = material["quantidade_total"]
-        material["disponiveis"] = material["disponiveis_manha"] + material["disponiveis_tarde"]
-    
-    return materiais
+@app.route("/logout")
+def logout():
+    session.clear()
+    cache.clear()
+    flash("Você saiu do sistema.", "success")
+    return redirect(url_for("login"))
 
-def get_totais():
-    materiais = supabase.table("materiais").select("quantidade_total").execute()
-    total_materiais = sum(m.get("quantidade_total", 0) for m in materiais.data)
+@app.route("/cadastrar_professor", methods=["GET", "POST"])
+def cadastrar_professor():
+    if request.method == "POST":
+        email = request.form["email"].strip()
+        senha = request.form["senha"].strip()
+        nome = request.form["nome"].strip()
+        confirmar_senha = request.form.get("confirmar_senha", "").strip()
+        
+        if not email or not senha or not nome:
+            flash("Todos os campos são obrigatórios.", "error")
+            return redirect(url_for("cadastrar_professor"))
+        
+        if senha != confirmar_senha:
+            flash("As senhas não coincidem.", "error")
+            return redirect(url_for("cadastrar_professor"))
+        
+        if len(senha) < 4:
+            flash("A senha deve ter pelo menos 4 caracteres.", "error")
+            return redirect(url_for("cadastrar_professor"))
+        
+        existente = supabase.table("usuarios").select("id").eq("email", email).execute().data
+        if existente:
+            flash("Este email já está cadastrado.", "error")
+            return redirect(url_for("cadastrar_professor"))
+        
+        supabase.table("usuarios").insert({
+            "email": email,
+            "senha": senha,
+            "nome": nome,
+            "role": "professor",
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }).execute()
+        
+        flash("Conta criada com sucesso! Faça login.", "success")
+        return redirect(url_for("login"))
     
-    emprestimos = supabase.table("emprestimos").select("id").is_("data_devolucao_real", "null").execute()
-    total_emprestados = len(emprestimos.data)
-    
-    reservas = supabase.table("reservas").select("id").execute()
-    total_reservados = len(reservas.data)
-    
-    return total_materiais, total_emprestados, total_reservados
+    return render_template("cadastrar_professor.html")
 
 # ==================== ROTA PRINCIPAL ====================
 @app.route("/")
+@login_required
 def index():
     try:
-        materiais = get_materiais_com_disponiveis()
-        total_materiais, total_emprestados, total_reservados = get_totais()
+        dados = get_todos_dados()
         return render_template(
             "index.html",
-            materiais=materiais,
-            total_materiais=total_materiais,
-            total_emprestados=total_emprestados,
-            total_reservados=total_reservados,
-            categorias=CATEGORIAS
+            materiais=dados['materiais'],
+            total_materiais=dados['total_materiais'],
+            total_emprestados=dados['total_emprestados'],
+            total_reservados=dados['total_reservados'],
+            categorias=CATEGORIAS,
+            usuario_nome=session.get('usuario_nome'),
+            usuario_role=session.get('role')
         )
     except Exception as e:
         return f"Erro ao carregar dados: {str(e)}", 500
 
 # ==================== CADASTRAR MATERIAL ====================
 @app.route("/cadastrar", methods=["GET", "POST"])
+@admin_required
 def cadastrar():
     if request.method == "POST":
         nome = request.form["nome"].strip()
@@ -199,44 +314,40 @@ def cadastrar():
             "categoria": categoria,
             "quantidade_total": quantidade,
             "especificacoes": especificacoes,
-            "data_aquisicao": datetime.now().strftime("%Y-%m-%d")
+            "data_aquisicao": datetime.now().strftime("%Y-%m-%d"),
+            "created_by": session['usuario_id']
         }).execute()
-
+        
+        cache.clear()
         flash(f"Material '{nome}' cadastrado com sucesso!", "success")
         return redirect(url_for("index"))
 
     return render_template("cadastrar.html", categorias=CATEGORIAS)
 
-# ==================== EMPRESTAR/RESERVAR MATERIAL ====================
+# ==================== EMPRESTAR/RESERVAR ====================
 @app.route("/emprestar/<int:material_id>", methods=["GET", "POST"])
+@login_required
 def emprestar(material_id):
-    material = supabase.table("materiais").select("*").eq("id", material_id).single().execute().data
+    dados = get_todos_dados()
+    material = next((m for m in dados['materiais'] if m['id'] == material_id), None)
+    
     if not material:
         flash("Material não encontrado.", "error")
         return redirect(url_for("index"))
 
     if request.method == "POST":
-        aluno = request.form["aluno"].strip()
+        aluno = session['usuario_nome']
         turma = request.form["turma"]
         horario_index = int(request.form.get("horario", 0))
         horario = HORARIOS[horario_index] if horario_index < len(HORARIOS) else HORARIOS[0]
         quantidade = int(request.form.get("quantidade", 1))
         data_retirada = request.form.get("data_retirada", datetime.now().strftime("%Y-%m-%d"))
-        
         turno = get_turno_by_turma(turma)
         
-        # VALIDAÇÃO 1: Verificar conflito de horário (data + turno + horário)
-        tem_conflito, msg_conflito = verificar_conflito_horario(material_id, data_retirada, turno, horario)
-        if tem_conflito:
-            flash(msg_conflito, "error")
-            return redirect(url_for("emprestar", material_id=material_id))
+        # Verificar disponibilidade
+        disponivel = get_disponibilidade_por_horario(material_id, data_retirada, turno, horario)
         
-        # VALIDAÇÃO 2: Verificar quantidade disponível
-        tem_quantidade, disponivel = verificar_disponibilidade_quantidade(
-            material_id, data_retirada, turno, horario, quantidade
-        )
-        
-        if not tem_quantidade:
+        if quantidade > disponivel:
             flash(f"Apenas {disponivel} unidades disponíveis para {turno.lower()} no dia {data_retirada} no horário {horario}.", "error")
             return redirect(url_for("emprestar", material_id=material_id))
         
@@ -246,7 +357,6 @@ def emprestar(material_id):
         
         data_devolucao_prevista = (datetime.strptime(data_retirada, "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
         
-        # Se for hoje, empresta imediatamente
         if data_retirada == datetime.now().strftime("%Y-%m-%d"):
             supabase.table("emprestimos").insert({
                 "material_id": material_id,
@@ -255,13 +365,14 @@ def emprestar(material_id):
                 "turno": turno,
                 "horario": horario,
                 "quantidade_emprestada": quantidade,
+                "usuario_id": session['usuario_id'],
+                "usuario_nome": session['usuario_nome'],
                 "data_emprestimo": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "data_emprestimo_data": data_retirada,
                 "data_devolucao_prevista": data_devolucao_prevista
             }).execute()
-            flash(f"{quantidade}x '{material['nome']}' EMPRESTADO para {aluno} ({turma}) no horário {horario}!", "success")
+            flash(f"{quantidade}x '{material['nome']}' EMPRESTADO para {aluno} no horário {horario}!", "success")
         else:
-            # Reserva para data futura
             supabase.table("reservas").insert({
                 "material_id": material_id,
                 "aluno": aluno,
@@ -269,32 +380,42 @@ def emprestar(material_id):
                 "turno": turno,
                 "horario": horario,
                 "quantidade_reservada": quantidade,
+                "usuario_id": session['usuario_id'],
+                "usuario_nome": session['usuario_nome'],
                 "data_reserva": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "data_retirada": data_retirada
             }).execute()
-            flash(f"{quantidade}x '{material['nome']}' RESERVADO para {aluno} ({turma}) no horário {horario} para o dia {data_retirada}!", "warning")
+            flash(f"{quantidade}x '{material['nome']}' RESERVADO para {aluno} no horário {horario} para o dia {data_retirada}!", "warning")
 
+        cache.clear()
         return redirect(url_for("index"))
     
     # GET - mostrar formulário
-    disponiveis_manha = calcular_disponiveis_hoje(material_id, "Manhã")
-    disponiveis_tarde = calcular_disponiveis_hoje(material_id, "Tarde")
+    hoje = datetime.now().strftime("%Y-%m-%d")
+    disponibilidades = {}
+    for horario in HORARIOS:
+        for turno in ["Manhã", "Tarde"]:
+            disponibilidades[f"{turno}_{horario}"] = get_disponibilidade_por_horario(material_id, hoje, turno, horario)
     
     return render_template("emprestar.html", 
                          material=material, 
                          turmas_manha=TURMAS_MANHA,
                          turmas_tarde=TURMAS_TARDE,
                          horarios=HORARIOS,
-                         disponiveis_manha=disponiveis_manha,
-                         disponiveis_tarde=disponiveis_tarde,
-                         hoje=datetime.now().strftime("%Y-%m-%d"))
+                         disponibilidades=disponibilidades,
+                         hoje=hoje)
 
 # ==================== ATUALIZAR RESERVA ====================
 @app.route("/atualizar_reserva/<int:reserva_id>", methods=["GET", "POST"])
+@login_required
 def atualizar_reserva(reserva_id):
     reserva = supabase.table("reservas").select("*, materiais(*)").eq("id", reserva_id).single().execute().data
     if not reserva:
         flash("Reserva não encontrada.", "error")
+        return redirect(url_for("reservas"))
+    
+    if not pode_editar_reserva(reserva_id, session['usuario_id'], session['role']):
+        flash("Você só pode editar suas próprias reservas.", "error")
         return redirect(url_for("reservas"))
 
     if request.method == "POST":
@@ -302,30 +423,20 @@ def atualizar_reserva(reserva_id):
         novo_horario_index = int(request.form.get("horario", 0))
         novo_horario = HORARIOS[novo_horario_index] if novo_horario_index < len(HORARIOS) else HORARIOS[0]
         
-        # VALIDAÇÃO: Verificar conflito de horário (ignorando a própria reserva)
-        tem_conflito, msg_conflito = verificar_conflito_horario(
-            reserva["material_id"], nova_data, reserva["turno"], novo_horario, reserva_id
+        disponivel = get_disponibilidade_por_horario(
+            reserva["material_id"], nova_data, reserva["turno"], novo_horario
         )
         
-        if tem_conflito:
-            flash(msg_conflito, "error")
-            return redirect(url_for("atualizar_reserva", reserva_id=reserva_id))
-        
-        # Verificar disponibilidade de quantidade para a nova data
-        tem_quantidade, disponivel = verificar_disponibilidade_quantidade(
-            reserva["material_id"], nova_data, reserva["turno"], novo_horario, reserva["quantidade_reservada"]
-        )
-        
-        if not tem_quantidade:
+        if reserva["quantidade_reservada"] > disponivel:
             flash(f"Apenas {disponivel} unidades disponíveis para {reserva['turno'].lower()} no dia {nova_data} no horário {novo_horario}.", "error")
             return redirect(url_for("atualizar_reserva", reserva_id=reserva_id))
         
-        # Atualizar reserva
         supabase.table("reservas").update({
             "data_retirada": nova_data,
             "horario": novo_horario
         }).eq("id", reserva_id).execute()
         
+        cache.clear()
         flash(f"Reserva atualizada para o dia {nova_data} no horário {novo_horario}!", "success")
         return redirect(url_for("reservas"))
     
@@ -333,9 +444,15 @@ def atualizar_reserva(reserva_id):
 
 # ==================== CANCELAR RESERVA ====================
 @app.route("/cancelar_reserva/<int:reserva_id>", methods=["POST"])
+@login_required
 def cancelar_reserva(reserva_id):
+    if not pode_editar_reserva(reserva_id, session['usuario_id'], session['role']):
+        flash("Você só pode cancelar suas próprias reservas.", "error")
+        return redirect(url_for("reservas"))
+    
     try:
         supabase.table("reservas").delete().eq("id", reserva_id).execute()
+        cache.clear()
         flash("Reserva cancelada com sucesso!", "success")
     except Exception as e:
         flash(f"Erro ao cancelar reserva: {str(e)}", "error")
@@ -344,77 +461,39 @@ def cancelar_reserva(reserva_id):
 
 # ==================== DEVOLVER MATERIAL ====================
 @app.route("/devolver/<int:emprestimo_id>", methods=["POST"])
+@login_required
 def devolver(emprestimo_id):
+    if not pode_devolver_emprestimo(emprestimo_id, session['usuario_id'], session['role']):
+        flash("Você só pode devolver materiais que pegou emprestado.", "error")
+        return redirect(url_for("emprestimos_ativos"))
+    
     try:
-        emprestimo = supabase.table("emprestimos")\
-            .select("*")\
-            .eq("id", emprestimo_id)\
-            .single()\
-            .execute()
-        
-        if not emprestimo.data:
-            flash("Empréstimo não encontrado.", "error")
-            return redirect(url_for("index"))
-
-        material_id = emprestimo.data["material_id"]
-        turno = emprestimo.data["turno"]
-        horario = emprestimo.data["horario"]
-        
-        # Registrar devolução
         supabase.table("emprestimos")\
             .update({
                 "data_devolucao_real": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })\
             .eq("id", emprestimo_id)\
             .execute()
-
-        # Verificar se há reservas para hoje neste mesmo horário
-        hoje = datetime.now().strftime("%Y-%m-%d")
-        reservas = supabase.table("reservas")\
-            .select("*")\
-            .eq("material_id", material_id)\
-            .eq("turno", turno)\
-            .eq("horario", horario)\
-            .eq("data_retirada", hoje)\
-            .order("data_reserva")\
-            .limit(1)\
-            .execute()
         
-        if reservas.data:
-            primeira = reservas.data[0]
-            data_devolucao_prevista = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
-            
-            supabase.table("emprestimos").insert({
-                "material_id": material_id,
-                "aluno": primeira["aluno"],
-                "turma": primeira["turma"],
-                "turno": primeira["turno"],
-                "horario": primeira["horario"],
-                "quantidade_emprestada": primeira["quantidade_reservada"],
-                "data_emprestimo": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "data_emprestimo_data": hoje,
-                "data_devolucao_prevista": data_devolucao_prevista
-            }).execute()
-            
-            supabase.table("reservas").delete().eq("id", primeira["id"]).execute()
-            flash(f"Material devolvido e repassado para: {primeira['aluno']} ({primeira['quantidade_reservada']}x)", "success")
-        else:
-            flash("Material devolvido com sucesso!", "success")
-            
+        cache.clear()
+        flash("Material devolvido com sucesso!", "success")
     except Exception as e:
         flash(f"Erro na devolução: {str(e)}", "error")
     
-    return redirect(url_for("index"))
+    return redirect(url_for("emprestimos_ativos"))
 
 # ==================== EXCLUIR MATERIAL ====================
 @app.route("/excluir/<int:material_id>", methods=["POST"])
+@admin_required
 def excluir(material_id):
     supabase.table("materiais").delete().eq("id", material_id).execute()
+    cache.clear()
     flash("Material excluído com sucesso!", "success")
     return redirect(url_for("index"))
 
 # ==================== ATUALIZAR MATERIAL ====================
 @app.route("/atualizar/<int:material_id>", methods=["GET", "POST"])
+@admin_required
 def atualizar(material_id):
     material = supabase.table("materiais").select("*").eq("id", material_id).single().execute().data
     if not material:
@@ -427,6 +506,7 @@ def atualizar(material_id):
             "quantidade_total": int(request.form["quantidade"]),
             "especificacoes": request.form.get("especificacoes", "")
         }).eq("id", material_id).execute()
+        cache.clear()
         flash(f"Material '{material['nome']}' atualizado com sucesso!", "success")
         return redirect(url_for("index"))
 
@@ -434,67 +514,49 @@ def atualizar(material_id):
 
 # ==================== BUSCAR / AUTOCOMPLETE ====================
 @app.route("/buscar")
+@login_required
 def buscar():
     termo = request.args.get("q", "").strip()
     if not termo:
         return redirect(url_for("index"))
 
-    materiais = supabase.table("materiais").select("*")\
-        .filter("nome", "ilike", f"%{termo}%")\
-        .execute().data
-    
-    materiais_categoria = supabase.table("materiais").select("*")\
-        .filter("categoria", "ilike", f"%{termo}%")\
-        .execute().data
-
-    ids_existentes = {m["id"] for m in materiais}
-    for m in materiais_categoria:
-        if m["id"] not in ids_existentes:
-            materiais.append(m)
-
-    for material in materiais:
-        material["disponiveis_manha"] = calcular_disponiveis_hoje(material["id"], "Manhã")
-        material["disponiveis_tarde"] = calcular_disponiveis_hoje(material["id"], "Tarde")
-        material["disponiveis"] = material["disponiveis_manha"] + material["disponiveis_tarde"]
-
-    total_materiais = sum(m.get("quantidade_total") or 0 for m in materiais)
-    
-    total_emprestados = 0
-    for material in materiais:
-        emprestimos = supabase.table("emprestimos").select("id")\
-            .eq("material_id", material["id"])\
-            .is_("data_devolucao_real", "null")\
-            .execute().data
-        total_emprestados += len(emprestimos)
+    dados = get_todos_dados()
+    materiais = [m for m in dados['materiais'] if termo.lower() in m['nome'].lower() or termo.lower() in m['categoria'].lower()]
 
     return render_template("index.html",
                            materiais=materiais,
                            termo=termo,
-                           total_materiais=total_materiais,
-                           total_emprestados=total_emprestados,
+                           total_materiais=len(materiais),
+                           total_emprestados=0,
                            categorias=CATEGORIAS)
 
 @app.route("/autocomplete")
+@login_required
 def autocomplete():
     termo = request.args.get("q", "")
     if not termo:
         return jsonify([])
 
-    materiais = supabase.table("materiais").select("nome")\
-        .ilike("nome", f"%{termo}%").limit(10).execute().data
-    sugestoes = [m["nome"] for m in materiais]
+    dados = get_todos_dados()
+    sugestoes = [m["nome"] for m in dados['materiais'] if termo.lower() in m['nome'].lower()][:10]
     return jsonify(sugestoes)
 
-# ==================== LISTAR EMPRÉSTIMOS ATIVOS ====================
+# ==================== LISTAR EMPRÉSTIMOS ====================
 @app.route("/emprestimos_ativos")
+@login_required
 def emprestimos_ativos():
-    materiais = supabase.table("materiais").select("id,quantidade_total").execute().data
-    total_materiais = sum(m.get("quantidade_total") or 0 for m in materiais)
-
-    emprestimos = supabase.table("emprestimos").select("*, materiais(*)")\
+    dados = get_todos_dados()
+    total_materiais = dados['total_materiais']
+    
+    emprestimos = supabase.table("emprestimos").select("*, materiais(*), usuarios!usuario_id(nome)")\
         .is_("data_devolucao_real", "null")\
         .order("data_emprestimo")\
         .execute().data
+    
+    for emp in emprestimos:
+        if emp.get("usuarios"):
+            emp["usuario_nome"] = emp["usuarios"]["nome"]
+    
     total_emprestados = len(emprestimos)
 
     return render_template("emprestimos_ativos.html",
@@ -504,45 +566,168 @@ def emprestimos_ativos():
 
 # ==================== LISTAR RESERVAS ====================
 @app.route("/reservas")
+@login_required
 def reservas():
-    reservas_list = supabase.table("reservas").select("*, materiais(*)")\
+    reservas_list = supabase.table("reservas").select("*, materiais(*), usuarios!usuario_id(nome)")\
         .order("data_retirada")\
         .execute().data
+    
+    for res in reservas_list:
+        if res.get("usuarios"):
+            res["usuario_nome"] = res["usuarios"]["nome"]
+    
     total_reservas = len(reservas_list)
     return render_template("reservas.html", reservas=reservas_list, total_reservas=total_reservas)
 
-# ==================== PROCESSAR RESERVAS DO DIA ====================
+# ==================== ADMIN - USUÁRIOS ====================
+@app.route("/admin/usuarios")
+@admin_required
+def listar_usuarios():
+    usuarios = supabase.table("usuarios").select("*").order("created_at").execute().data
+    return render_template("admin_usuarios.html", usuarios=usuarios)
+
+@app.route("/admin/usuarios/criar", methods=["GET", "POST"])
+@admin_required
+def criar_usuario():
+    if request.method == "POST":
+        email = request.form["email"].strip()
+        senha = request.form["senha"].strip()
+        nome = request.form["nome"].strip()
+        role = request.form["role"]
+        
+        existente = supabase.table("usuarios").select("id").eq("email", email).execute().data
+        if existente:
+            flash("Este email já está cadastrado.", "error")
+            return redirect(url_for("criar_usuario"))
+        
+        supabase.table("usuarios").insert({
+            "email": email,
+            "senha": senha,
+            "nome": nome,
+            "role": role,
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }).execute()
+        
+        flash(f"Usuário {nome} criado com sucesso!", "success")
+        return redirect(url_for("listar_usuarios"))
+    
+    return render_template("criar_usuario.html")
+
+@app.route("/admin/usuarios/editar/<int:usuario_id>", methods=["GET", "POST"])
+@admin_required
+def editar_usuario(usuario_id):
+    usuario = supabase.table("usuarios").select("*").eq("id", usuario_id).single().execute().data
+    if not usuario:
+        flash("Usuário não encontrado.", "error")
+        return redirect(url_for("listar_usuarios"))
+    
+    if request.method == "POST":
+        nome = request.form["nome"].strip()
+        role = request.form["role"]
+        senha = request.form.get("senha", "").strip()
+        
+        dados_update = {"nome": nome, "role": role}
+        if senha:
+            dados_update["senha"] = senha
+        
+        supabase.table("usuarios").update(dados_update).eq("id", usuario_id).execute()
+        flash(f"Usuário {nome} atualizado com sucesso!", "success")
+        return redirect(url_for("listar_usuarios"))
+    
+    return render_template("editar_usuario.html", usuario=usuario)
+
+@app.route("/admin/usuarios/excluir/<int:usuario_id>", methods=["POST"])
+@admin_required
+def excluir_usuario(usuario_id):
+    if usuario_id == session['usuario_id']:
+        flash("Você não pode excluir seu próprio usuário.", "error")
+        return redirect(url_for("listar_usuarios"))
+    
+    supabase.table("usuarios").delete().eq("id", usuario_id).execute()
+    flash("Usuário excluído com sucesso!", "success")
+    return redirect(url_for("listar_usuarios"))
+
+@app.route("/admin/tornar_admin/<int:usuario_id>", methods=["POST"])
+@admin_required
+def tornar_admin(usuario_id):
+    if usuario_id == session['usuario_id']:
+        flash("Você já é administrador.", "warning")
+        return redirect(url_for("listar_usuarios"))
+    
+    supabase.table("usuarios").update({"role": "admin"}).eq("id", usuario_id).execute()
+    flash("Usuário promovido a administrador com sucesso!", "success")
+    return redirect(url_for("listar_usuarios"))
+
+@app.route("/admin/rebaixar_professor/<int:usuario_id>", methods=["POST"])
+@admin_required
+def rebaixar_professor(usuario_id):
+    if usuario_id == session['usuario_id']:
+        flash("Você não pode rebaixar a si mesmo.", "error")
+        return redirect(url_for("listar_usuarios"))
+    
+    supabase.table("usuarios").update({"role": "professor"}).eq("id", usuario_id).execute()
+    flash("Usuário rebaixado para professor.", "success")
+    return redirect(url_for("listar_usuarios"))
+
+# ==================== DASHBOARD ADMIN ====================
+@app.route("/admin/dashboard")
+@admin_required
+def admin_dashboard():
+    dados = get_todos_dados()
+    total_materiais = dados['total_materiais']
+    total_emprestimos = dados['total_emprestados']
+    total_reservas = dados['total_reservados']
+    
+    usuarios = supabase.table("usuarios").select("id").execute().data
+    total_usuarios = len(usuarios)
+    
+    hoje = datetime.now()
+    emprestimos_por_dia = []
+    for i in range(7):
+        data = (hoje - timedelta(days=i)).strftime("%Y-%m-%d")
+        count = supabase.table("emprestimos").select("id").eq("data_emprestimo_data", data).execute().data
+        emprestimos_por_dia.append({"data": data, "total": len(count)})
+    
+    top_materiais = supabase.table("emprestimos").select("materiais(nome), quantidade_emprestada").execute().data
+    
+    materiais_count = {}
+    for e in top_materiais:
+        nome = e.get("materiais", {}).get("nome", "Desconhecido")
+        qtd = e.get("quantidade_emprestada", 1)
+        materiais_count[nome] = materiais_count.get(nome, 0) + qtd
+    
+    top_5 = sorted(materiais_count.items(), key=lambda x: x[1], reverse=True)[:5]
+    
+    ultimos_emprestimos = supabase.table("emprestimos").select("*, materiais(nome), usuarios!usuario_id(nome)")\
+        .order("data_emprestimo", desc=True).limit(10).execute().data
+    
+    for emp in ultimos_emprestimos:
+        if emp.get("usuarios"):
+            emp["usuario_nome"] = emp["usuarios"]["nome"]
+    
+    return render_template("admin_dashboard.html",
+                         total_materiais=total_materiais,
+                         total_emprestimos=total_emprestimos,
+                         total_reservas=total_reservas,
+                         total_usuarios=total_usuarios,
+                         emprestimos_por_dia=emprestimos_por_dia,
+                         top_materiais=top_5,
+                         ultimos_emprestimos=ultimos_emprestimos)
+
+# ==================== PROCESSAR RESERVAS ====================
 @app.route("/processar_reservas")
+@admin_required
 def processar_reservas():
-    """Processa reservas cuja data de retirada é hoje"""
     try:
         hoje = datetime.now().strftime("%Y-%m-%d")
-        
-        reservas_hoje = supabase.table("reservas")\
-            .select("*")\
-            .eq("data_retirada", hoje)\
-            .execute().data
+        reservas_hoje = supabase.table("reservas").select("*").eq("data_retirada", hoje).execute().data
         
         for reserva in reservas_hoje:
-            # Verificar conflito de horário
-            tem_conflito, _ = verificar_conflito_horario(
+            disponivel = get_disponibilidade_por_horario(
                 reserva["material_id"], hoje, reserva["turno"], reserva["horario"]
             )
             
-            if tem_conflito:
-                amanha = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-                supabase.table("reservas").update({
-                    "data_retirada": amanha
-                }).eq("id", reserva["id"]).execute()
-                flash(f"Reserva para {reserva['aluno']} foi adiada para amanhã devido a conflito de horário.", "warning")
-                continue
-            
-            # Verificar quantidade disponível
-            tem_quantidade, disponivel = verificar_disponibilidade_quantidade(
-                reserva["material_id"], hoje, reserva["turno"], reserva["horario"], reserva["quantidade_reservada"]
-            )
-            
-            if tem_quantidade:
+            if disponivel >= reserva["quantidade_reservada"]:
                 data_devolucao_prevista = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
                 
                 supabase.table("emprestimos").insert({
@@ -552,24 +737,25 @@ def processar_reservas():
                     "turno": reserva["turno"],
                     "horario": reserva["horario"],
                     "quantidade_emprestada": reserva["quantidade_reservada"],
+                    "usuario_id": reserva["usuario_id"],
+                    "usuario_nome": reserva.get("usuario_nome", ""),
                     "data_emprestimo": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "data_emprestimo_data": hoje,
                     "data_devolucao_prevista": data_devolucao_prevista
                 }).execute()
                 
                 supabase.table("reservas").delete().eq("id", reserva["id"]).execute()
-                flash(f"Reserva para {reserva['aluno']} ({reserva['quantidade_reservada']}x) foi processada com sucesso!", "success")
+                flash(f"Reserva para {reserva['aluno']} processada!", "success")
             else:
                 amanha = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-                supabase.table("reservas").update({
-                    "data_retirada": amanha
-                }).eq("id", reserva["id"]).execute()
-                flash(f"Reserva para {reserva['aluno']} foi adiada para amanhã devido à falta de material.", "warning")
+                supabase.table("reservas").update({"data_retirada": amanha}).eq("id", reserva["id"]).execute()
+                flash(f"Reserva para {reserva['aluno']} adiada para amanhã (falta de material)", "warning")
         
-        return redirect(url_for("index"))
+        cache.clear()
     except Exception as e:
         flash(f"Erro ao processar reservas: {str(e)}", "error")
-        return redirect(url_for("index"))
+    
+    return redirect(url_for("index"))
 
 if __name__ == "__main__":
     app.run(debug=True)

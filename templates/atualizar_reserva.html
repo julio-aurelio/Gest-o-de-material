@@ -1,17 +1,47 @@
 <!DOCTYPE html>
 <html>
-
 <head>
     <title>Atualizar Reserva</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
 </head>
-
 <body>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div id="flash-container">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
     <div class="container">
-        <h1>✏️ Atualizar Reserva</h1>
+        <div class="page-header">
+            <h1>✏️ Atualizar Reserva</h1>
+            <div class="user-welcome">
+                <span>👋 Olá, {{ session.usuario_nome }}!</span>
+                {% if session.role == 'admin' %}
+                <span class="badge-admin">Admin</span>
+                {% else %}
+                <span class="badge-professor">Professor</span>
+                {% endif %}
+                <a href="{{ url_for('logout') }}" class="logout-link">🚪 Sair</a>
+            </div>
+        </div>
+
+        <nav>
+            <a href="{{ url_for('index') }}">📦 Todos Materiais</a>
+            {% if session.role == 'admin' %}
+            <a href="{{ url_for('listar_usuarios') }}">👥 Usuários</a>
+            <a href="{{ url_for('admin_dashboard') }}">📊 Dashboard</a>
+            {% endif %}
+            <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
+            <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
+            <a href="{{ url_for('reservas') }}">⏳ Reservas</a>
+        </nav>
         
-        <div style="background: #e0f2f1; padding: 20px; border-radius: 15px; margin-bottom: 20px;">
+        <div class="info-box">
             <h3>{{ reserva.materiais.nome }}</h3>
             <p><strong>Aluno:</strong> {{ reserva.aluno }} ({{ reserva.turma }})</p>
             <p><strong>Quantidade:</strong> {{ reserva.quantidade_reservada }} unidade(s)</p>
@@ -36,7 +66,7 @@
             <input type="submit" value="💾 Salvar Alterações">
         </form>
 
-        <a class="btn" href="{{ url_for('reservas') }}">❌ Cancelar</a>
+        <a class="btn" href="{{ url_for('reservas') }}" style="margin-top: 20px;">❌ Cancelar</a>
     </div>
     
     <script>
@@ -44,5 +74,4 @@
         document.getElementById('data_retirada').min = hoje;
     </script>
 </body>
-
 </html>

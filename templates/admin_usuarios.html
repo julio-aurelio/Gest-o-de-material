@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Gerenciar Usuários</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+</head>
+<body>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div id="flash-container">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="container">
+        <div class="user-header">
+            <h1>👥 Gerenciar Usuários</h1>
+            <div class="user-info">
+                👋 {{ session.usuario_nome }}
+                {% if session.role == 'admin' %}
+                <span class="badge-admin">Admin</span>
+                {% endif %}
+                <a href="{{ url_for('logout') }}" class="logout-link">🚪 Sair</a>
+            </div>
+        </div>
+        <br><br>
+        <nav>
+            <a href="{{ url_for('index') }}">📦 Todos Materiais</a>
+            {% if session.role == 'admin' %}
+            <a href="{{ url_for('listar_usuarios') }}">👥 Usuários</a>
+            <a href="{{ url_for('admin_dashboard') }}">📊 Dashboard</a>
+            {% endif %}
+            <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
+            <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
+            <a href="{{ url_for('reservas') }}">⏳ Reservas</a>
+        </nav>
+
+        <div style="margin: 20px 0; text-align: center;">
+            <a class="btn" href="{{ url_for('criar_usuario') }}">➕ Novo Usuário</a>
+        </div>
+
+        <table class="user-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nome</th>
+                    <th>Email</th>
+                    <th>Função</th>
+                    <th>Data Cadastro</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for usuario in usuarios %}
+                <tr>
+                    <td>{{ usuario.id }}</td>
+                    <td>{{ usuario.nome }}</td>
+                    <td>{{ usuario.email }}</td>
+                    <td>
+                        {% if usuario.role == 'admin' %}
+                        <span class="badge-admin">Admin</span>
+                        {% else %}
+                        <span class="badge-professor">Professor</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ usuario.created_at[:10] if usuario.created_at else '-' }}</td>
+                    <td>
+                        <a class="btn btn-small" href="{{ url_for('editar_usuario', usuario_id=usuario.id) }}">✏️ Editar</a>
+                        {% if usuario.role == 'professor' %}
+                        <a href="#" class="btn btn-small btn-success" onclick="tornarAdmin({{ usuario.id }})">👑 Promover</a>
+                        {% elif usuario.role == 'admin' and usuario.id != session.usuario_id %}
+                        <a href="#" class="btn btn-small btn-warning" onclick="rebaixarProfessor({{ usuario.id }})">📉 Rebaixar</a>
+                        {% endif %}
+                        {% if usuario.id != session.usuario_id %}
+                        <a href="#" class="btn btn-small btn-danger" onclick="excluirUsuario({{ usuario.id }}, '{{ usuario.nome }}')">🗑️ Excluir</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <a class="btn" href="{{ url_for('index') }}" style="margin-top: 20px;">⬅️ Voltar</a>
+    </div>
+
+    <script>
+        function excluirUsuario(id, nome) {
+            if (confirm(`Tem certeza que deseja excluir o usuário "${nome}"?`)) {
+                fetch(`/admin/usuarios/excluir/${id}`, { method: 'POST' })
+                    .then(() => location.reload());
+            }
+        }
+        
+        function tornarAdmin(id) {
+            if (confirm('Tem certeza que deseja tornar este usuário administrador?')) {
+                fetch(`/admin/tornar_admin/${id}`, { method: 'POST' })
+                    .then(() => location.reload());
+            }
+        }
+        
+        function rebaixarProfessor(id) {
+            if (confirm('Tem certeza que deseja rebaixar este administrador para professor?')) {
+                fetch(`/admin/rebaixar_professor/${id}`, { method: 'POST' })
+                    .then(() => location.reload());
+            }
+        }
+    </script>
+</body>
+</html>

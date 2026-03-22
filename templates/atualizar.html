@@ -6,29 +6,61 @@
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
 </head>
 <body>
-<div class="container">
-    <h1>✏️ Atualizar Material</h1>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div id="flash-container">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
 
-    <form method="post">
-        <input type="text" name="nome" value="{{ material.nome }}" required>
-        
-        <label for="categoria">Categoria:</label>
-        <select name="categoria" required>
-            {% for categoria in categorias %}
-            <option value="{{ categoria }}" {% if material.categoria == categoria %}selected{% endif %}>
-                {{ categoria }}
-            </option>
-            {% endfor %}
-        </select>
-        
-        <input type="number" name="quantidade" value="{{ material.quantidade_total }}" min="1" required>
-        
-        <textarea name="especificacoes" rows="4">{{ material.especificacoes or '' }}</textarea>
+    <div class="container">
+        <div class="page-header">
+            <h1>✏️ Atualizar Material</h1>
+            <div class="user-welcome">
+                <span>👋 Olá, {{ session.usuario_nome }}!</span>
+                {% if session.role == 'admin' %}
+                <span class="badge-admin">Admin</span>
+                {% else %}
+                <span class="badge-professor">Professor</span>
+                {% endif %}
+                <a href="{{ url_for('logout') }}" class="logout-link">🚪 Sair</a>
+            </div>
+        </div>
 
-        <input type="submit" value="💾 Salvar Alterações">
-    </form>
+        <nav>
+            <a href="{{ url_for('index') }}">📦 Todos Materiais</a>
+            {% if session.role == 'admin' %}
+            <a href="{{ url_for('listar_usuarios') }}">👥 Usuários</a>
+            <a href="{{ url_for('admin_dashboard') }}">📊 Dashboard</a>
+            {% endif %}
+            <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
+            <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
+            <a href="{{ url_for('reservas') }}">⏳ Reservas</a>
+        </nav>
 
-    <a class="btn" href="{{ url_for('index') }}">⬅️ Voltar</a>
-</div>
+        <form method="post">
+            <input type="text" name="nome" value="{{ material.nome }}" required autocomplete="off">
+            
+            <label for="categoria">Categoria:</label>
+            <select name="categoria" required>
+                {% for categoria in categorias %}
+                <option value="{{ categoria }}" {% if material.categoria == categoria %}selected{% endif %}>
+                    {{ categoria }}
+                </option>
+                {% endfor %}
+            </select>
+            
+            <input type="number" name="quantidade" value="{{ material.quantidade_total }}" min="1" required>
+            
+            <textarea name="especificacoes" rows="4">{{ material.especificacoes or '' }}</textarea>
+
+            <input type="submit" value="💾 Salvar Alterações">
+        </form>
+
+        <a class="btn" href="{{ url_for('index') }}" style="margin-top: 20px;">⬅️ Voltar</a>
+    </div>
 </body>
 </html>

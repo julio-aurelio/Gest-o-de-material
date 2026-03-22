@@ -1,33 +1,54 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Cadastrar Material Educacionais</title>
+    <title>Cadastrar Material</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
 </head>
 <body>
-<div class="container">
-    <h1>➕ Cadastrar Material Educacionais</h1>
-    
-    <form method="post">
-        <input type="text" name="nome" placeholder="Nome do material (ex: Bola de Futebol, cromebook...)" required>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div id="flash-container">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="container">
+        <div class="page-header">
+            <h1>➕ Cadastrar Material</h1>
+            <div class="user-welcome">
+                <span>👋 Olá, {{ session.usuario_nome }}!</span>
+                {% if session.role == 'admin' %}
+                <span class="badge-admin">Admin</span>
+                {% else %}
+                <span class="badge-professor">Professor</span>
+                {% endif %}
+                <a href="{{ url_for('logout') }}" class="logout-link">🚪 Sair</a>
+            </div>
+        </div>
+
+        <form method="post">
+            <input type="text" name="nome" placeholder="Nome do material (ex: Bola de Futebol, Cromebook)" required autocomplete="off">
+            
+            <label for="categoria">Categoria:</label>
+            <select name="categoria" required>
+                <option value="">Selecione uma categoria</option>
+                {% for categoria in categorias %}
+                <option value="{{ categoria }}">{{ categoria }}</option>
+                {% endfor %}
+            </select>
+            
+            <input type="number" name="quantidade" placeholder="Quantidade total" min="1" required>
+            
+            <textarea name="especificacoes" placeholder="Especificações (tamanho, cor, marca, etc.)" rows="4"></textarea>
+            
+            <button type="submit" value="✅ Confirmar">✅ Confirmar</button>
+        </form>
         
-        <label for="categoria">Categoria:</label>
-        <select name="categoria" required>
-            <option value="">Selecione uma categoria</option>
-            {% for categoria in categorias %}
-            <option value="{{ categoria }}">{{ categoria }}</option>
-            {% endfor %}
-        </select>
-        
-        <input type="number" name="quantidade" placeholder="Quantidade total" min="1" required>
-        
-        <textarea name="especificacoes" placeholder="Especificações (tamanho, cor, marca, etc.)" rows="4"></textarea>
-        
-        <input type="submit" value="✅ Cadastrar">
-    </form>
-    
-    <a class="btn" href="{{ url_for('index') }}">⬅️ Voltar</a>
-</div>
+        <a class="btn" href="{{ url_for('index') }}" style="margin-top: 20px;">⬅️ Voltar</a>
+    </div>
 </body>
 </html>

@@ -1,14 +1,11 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-    <title>Gestão de Materiais Educacionais</title>
+    <title>Gestão de Materiais</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
 </head>
-
 <body>
-
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
     <div id="flash-container">
@@ -20,22 +17,38 @@
     {% endwith %}
 
     <div class="container">
-        <h1>📋 Materiais Educacionais</h1>
-        <p style="text-align:center;">
-            Total de materiais cadastrados: {{ total_materiais }} | 
-            Total emprestados: {{ total_emprestados }} |
-            Total reservados: {{ total_reservados }}
-        </p>
-        <br>
+        <div class="page-header">
+            <h1>📋 Materiais</h1>
+            <div class="user-welcome">
+                <span>👋 Olá, {{ session.usuario_nome }}!</span>
+                {% if session.role == 'admin' %}
+                <span class="badge-admin">Admin</span>
+                {% else %}
+                <span class="badge-professor">Professor</span>
+                {% endif %}
+                <a href="{{ url_for('logout') }}" class="logout-link">🚪 Sair</a>
+            </div>
+        </div>
+        
+        <div class="stats-bar">
+            📊 Total de materiais: <strong>{{ total_materiais }}</strong> | 
+            📖 Emprestados: <strong>{{ total_emprestados }}</strong> | 
+            ⏳ Reservados: <strong>{{ total_reservados }}</strong>
+        </div>
+
         <nav>
             <a href="{{ url_for('index') }}">📦 Todos Materiais</a>
+            {% if session.role == 'admin' %}
+            <a href="{{ url_for('listar_usuarios') }}">👥 Usuários</a>
+            <a href="{{ url_for('admin_dashboard') }}">📊 Dashboard</a>
+            {% endif %}
             <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
             <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
             <a href="{{ url_for('reservas') }}">⏳ Reservas</a>
         </nav>
 
         <form method="get" action="{{ url_for('buscar') }}" id="search-form">
-            <input type="text" name="q" placeholder="Buscar por nome ou categoria" value="{{ termo|default('') }}">
+            <input type="text" name="q" placeholder="Buscar por nome ou categoria" value="{{ termo|default('') }}" autocomplete="off">
             <input type="submit" value="🔍">
             <ul id="suggestions"></ul>
         </form>
@@ -48,16 +61,44 @@
                 {% if material["especificacoes"] %}
                 <p><strong>Especificações:</strong> {{ material["especificacoes"] }}</p>
                 {% endif %}
-                <p>🌅 Manhã: {{ material["disponiveis_manha"] }} | 🌙 Tarde: {{ material["disponiveis_tarde"] }} disponíveis</p>
-                <p>Total: {{ material["total"] }} unidades</p>
+                <p><strong>Total:</strong> {{ material["total"] }} unidades</p>
+                
+                <!-- Horários Disponíveis -->
+                <div class="horarios-container">
+                    <div class="horario-turno">
+                        <strong>📅 Horários Manhã</strong>
+                        <div class="horario-lista">
+                            {% for horario in material["horarios_manha_hoje"] %}
+                            <span class="horario-item disponivel">{{ horario }}</span>
+                            {% endfor %}
+                            {% if not material["horarios_manha_hoje"] %}
+                            <span class="horario-item indisponivel">Nenhum horário</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="horario-turno">
+                        <strong>📅 Horários Tarde</strong>
+                        <div class="horario-lista">
+                            {% for horario in material["horarios_tarde_hoje"] %}
+                            <span class="horario-item disponivel">{{ horario }}</span>
+                            {% endfor %}
+                            {% if not material["horarios_tarde_hoje"] %}
+                            <span class="horario-item indisponivel">Nenhum horário</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
 
-                {% if material["disponiveis_manha"] > 0 or material["disponiveis_tarde"] > 0 %}
-                <a class="btn" href="{{ url_for('emprestar', material_id=material["id"]) }}">Emprestar</a>
+                {% if material["horarios_manha_hoje"] or material["horarios_tarde_hoje"] %}
+                <a class="btn" href="{{ url_for('emprestar', material_id=material["id"]) }}">Emprestar/Reservar</a>
                 {% else %}
-                <span class="indisponivel">Indisponível</span>
+                <span class="indisponivel">Sem horários disponíveis hoje</span>
                 {% endif %}
+                
+                {% if session.role == 'admin' %}
                 <a class="btn" href="{{ url_for('atualizar', material_id=material["id"]) }}">Atualizar</a>
                 <a href="#" class="btn" onclick="excluirMaterial({{ material["id"] }})">Excluir</a>
+                {% endif %}
             </li>
             {% endfor %}
         </ul>
@@ -65,13 +106,13 @@
         <script>
             const input = document.querySelector('input[name="q"]');
             const suggestions = document.getElementById('suggestions');
-            
+
             input.addEventListener('input', async () => {
                 const termo = input.value;
-                if (!termo) { 
-                    suggestions.style.display = 'none'; 
-                    suggestions.innerHTML = ''; 
-                    return; 
+                if (!termo) {
+                    suggestions.style.display = 'none';
+                    suggestions.innerHTML = '';
+                    return;
                 }
                 const res = await fetch(`/autocomplete?q=${termo}`);
                 const data = await res.json();
@@ -80,15 +121,23 @@
                     data.forEach(item => {
                         const li = document.createElement('li');
                         li.textContent = item;
-                        li.onclick = () => { 
-                            input.value = item; 
-                            suggestions.style.display = 'none'; 
+                        li.onclick = () => {
+                            input.value = item;
+                            suggestions.style.display = 'none';
+                            document.getElementById('search-form').submit();
                         };
                         suggestions.appendChild(li);
                     });
                     suggestions.style.display = 'block';
-                } else { 
-                    suggestions.style.display = 'none'; 
+                } else {
+                    suggestions.style.display = 'none';
+                }
+            });
+
+            // Fechar sugestões ao clicar fora
+            document.addEventListener('click', function(e) {
+                if (!input.contains(e.target) && !suggestions.contains(e.target)) {
+                    suggestions.style.display = 'none';
                 }
             });
 

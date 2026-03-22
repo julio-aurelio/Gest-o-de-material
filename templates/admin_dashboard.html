@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard Admin</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+</head>
+<body>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div id="flash-container">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="container">
+        <div class="page-header">
+            <h1>📊 Dashboard Administrativo</h1>
+            <div class="user-welcome">
+                <span>👋 Olá, {{ session.usuario_nome }}!</span>
+                <span class="badge-admin">Admin</span>
+                <a href="{{ url_for('logout') }}" class="logout-link">🚪 Sair</a>
+            </div>
+        </div>
+        
+        <div class="dashboard-stats">
+            <div class="stat-card">
+                <div class="stat-number">{{ total_materiais }}</div>
+                <div class="stat-label">Total de Materiais</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ total_emprestimos }}</div>
+                <div class="stat-label">Empréstimos Realizados</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ total_reservas }}</div>
+                <div class="stat-label">Reservas Feitas</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ total_usuarios }}</div>
+                <div class="stat-label">Usuários Cadastrados</div>
+            </div>
+        </div>
+
+        <nav>
+            <a href="{{ url_for('index') }}">📦 Todos Materiais</a>
+            {% if session.role == 'admin' %}
+            <a href="{{ url_for('listar_usuarios') }}">👥 Usuários</a>
+            <a href="{{ url_for('admin_dashboard') }}">📊 Dashboard</a>
+            {% endif %}
+            <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
+            <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
+            <a href="{{ url_for('reservas') }}">⏳ Reservas</a>
+        </nav>
+
+        <div class="dashboard-section">
+            <h2>👨‍🏫 Últimos Empréstimos</h2>
+            <table class="user-table">
+                <thead>
+                    <tr>
+                        <th>Material</th>
+                        <th>Professor</th>
+                        <th>Data</th>
+                        <th>Horário</th>
+                        <th>Quantidade</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in ultimos_emprestimos %}
+                    <tr>
+                        <td>{{ emp.materiais.nome }}</td>
+                        <td>{{ emp.usuario_nome or '-' }}</td>
+                        <td>{{ emp.data_emprestimo[:10] }}</td>
+                        <td>{{ emp.horario }}</td>
+                        <td>{{ emp.quantidade_emprestada }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" style="text-align: center;">Nenhum empréstimo registrado</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

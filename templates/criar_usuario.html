@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Criar Usuário</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+</head>
+<body>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div id="flash-container">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="container">
+        <h1>➕ Criar Novo Usuário</h1>
+        
+        <nav>
+            <a href="{{ url_for('index') }}">📦 Materiais</a>
+            <a href="{{ url_for('listar_usuarios') }}">👥 Usuários</a>
+            <a href="{{ url_for('admin_dashboard') }}">📊 Dashboard</a>
+            <a href="{{ url_for('logout') }}">🚪 Sair</a>
+        </nav>
+
+        <form method="post" style="max-width: 500px; margin: 20px auto;">
+            <input type="text" name="nome" placeholder="Nome completo" required autocomplete="off">
+            <input type="email" name="email" placeholder="Email" required autocomplete="off">
+            <input type="password" name="senha" placeholder="Senha" required autocomplete="off">
+            
+            <label for="role">Função:</label>
+            <select name="role" required>
+                <option value="professor">Professor</option>
+                <option value="admin">Administrador</option>
+            </select>
+            
+            <button type="submit" value="✅ Confirmar">✅ Confirmar</button>
+        </form>
+
+        <a class="btn" href="{{ url_for('listar_usuarios') }}">⬅️ Voltar</a>
+    </div>
+</body>
+</html>
