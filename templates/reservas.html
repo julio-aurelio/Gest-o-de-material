@@ -44,6 +44,7 @@
             <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
             <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
             <a href="{{ url_for('reservas') }}">⏳ Reservas</a>
+            <a href="{{ url_for('listar_ocorrencias') }}">📝 Ocorrências</a>
         </nav>
 
         {% if reservas %}
@@ -80,7 +81,7 @@
         </div>
         {% endif %}
 
-        <a class="btn" href="{{ url_for('index') }}" style="margin-top: 20px;">⬅️ Voltar</a>
+
     </div>
 
     <script>

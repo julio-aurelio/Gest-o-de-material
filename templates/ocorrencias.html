@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Ocorrências</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+<body>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div id="flash-container">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="container">
+        <div class="page-header">
+            <h1>📝 Ocorrências</h1>
+            <div class="user-welcome">
+                <span>👋 Olá, {{ session.usuario_nome }}!</span>
+                {% if session.role == 'admin' %}
+                <span class="badge-admin">Admin</span>
+                {% else %}
+                <span class="badge-professor">Professor</span>
+                {% endif %}
+                <a href="{{ url_for('logout') }}" class="logout-link">🚪 Sair</a>
+            </div>
+        </div>
+
+        <div class="stats-bar">
+            📊 Total de ocorrências: <strong>{{ ocorrencias|length }}</strong>
+            {% if notificacoes_pendentes > 0 %}
+            | 📢 Notificações pendentes: <strong class="badge-notificacao">{{ notificacoes_pendentes }}</strong>
+            {% endif %}
+        </div>
+
+        <nav>
+            <a href="{{ url_for('index') }}">📦 Todos Materiais</a>
+            {% if session.role == 'admin' %}
+            <a href="{{ url_for('listar_usuarios') }}">👥 Usuários</a>
+            <a href="{{ url_for('admin_dashboard') }}">📊 Dashboard</a>
+            {% endif %}
+            <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
+            <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
+            <a href="{{ url_for('reservas') }}">⏳ Reservas</a>
+            <a href="{{ url_for('listar_ocorrencias') }}">📝 Ocorrências</a>
+        </nav>
+
+        <!-- FILTROS MELHORADOS -->
+        <div class="filtros-container">
+            <div class="filtros-header" onclick="toggleFiltros()">
+                <h3>
+                    <span>🔍</span>
+                    Filtrar Ocorrências
+                    <span class="resultados-counter">
+                        📊 {{ ocorrencias|length }} resultado(s)
+                    </span>
+                </h3>
+                <div class="filtros-toggle" id="filtrosToggle">
+                    <span>Fechar</span>
+                    <span class="toggle-icon">▲</span>
+                </div>
+            </div>
+            <div class="filtros-body" id="filtrosBody">
+                <form method="get" action="{{ url_for('listar_ocorrencias') }}" class="filtros-form">
+                    <div class="filtro-group">
+                        <label>🔍 Nome do Aluno</label>
+                        <input type="text" name="aluno" placeholder="Digite o nome do aluno..."
+                            value="{{ filtro_aluno }}">
+                        <span class="input-icon">👤</span>
+                    </div>
+
+                    <div class="filtro-group">
+                        <label>📚 Turma</label>
+                        <select name="turma">
+                            <option value="">Todas as turmas</option>
+                            <optgroup label="🌅 Manhã">
+                                {% for turma in turmas_manha %}
+                                <option value="{{ turma }}" {% if filtro_turma==turma %}selected{% endif %}>{{ turma }}
+                                </option>
+                                {% endfor %}
+                            </optgroup>
+                            <optgroup label="🌙 Tarde">
+                                {% for turma in turmas_tarde %}
+                                <option value="{{ turma }}" {% if filtro_turma==turma %}selected{% endif %}>{{ turma }}
+                                </option>
+                                {% endfor %}
+                            </optgroup>
+                        </select>
+                        <span class="input-icon">📖</span>
+                    </div>
+
+                    <div class="filtro-actions">
+                        <button type="submit" class="btn btn-filtrar">
+                            <span>🔍</span> Filtrar
+                        </button>
+                        <a href="{{ url_for('listar_ocorrencias') }}" class="btn btn-limpar">
+                            <span>🗑️</span> Limpar
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div style="margin: 20px 0; text-align: center;">
+            <a class="btn" href="{{ url_for('nova_ocorrencia') }}">➕ Nova Ocorrência</a>
+        </div>
+        <!-- INFO DE FILTROS ATIVOS -->
+        {% if filtro_aluno or filtro_turma %}
+        <div class="filtro-info">
+            <p>
+                <span>🔍</span>
+                <strong>Filtros aplicados:</strong>
+                {% if filtro_aluno %} Aluno: "{{ filtro_aluno }}"{% endif %}
+                {% if filtro_turma %} | Turma: {{ filtro_turma }}{% endif %}
+            </p>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <span class="badge-filtro">{{ ocorrencias|length }} ocorrência(s)</span>
+                <a href="{{ url_for('listar_ocorrencias') }}" class="btn-limpar-filtro">✖️ Limpar tudo</a>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if ocorrencias %}
+        <ul>
+            {% for ocorrencia in ocorrencias %}
+            <li>
+                <h3>📅 {{ ocorrencia.data_ocorrencia }} - {{ ocorrencia.nome_aluno }} ({{ ocorrencia.turma }})</h3>
+                <p><strong>👨‍🏫 Professor:</strong> {{ ocorrencia.usuario_nome }}</p>
+                <p><strong>📝 Ocorrência:</strong> {{ ocorrencia.ocorrencia }}</p>
+                {% if ocorrencia.observacao %}
+                <p><strong>📌 Observação:</strong> {{ ocorrencia.observacao }}</p>
+                {% endif %}
+                <p><strong>📢 Notificar pais:</strong> {% if ocorrencia.notificar_pais %}✅ Sim{% else %}❌ Não{% endif %}
+                </p>
+                <p><small>🕐 Registrado em: {{ ocorrencia.created_at[:16] }}</small></p>
+
+                <!-- Botões de editar/excluir - só para quem criou ou admin -->
+                {% if session.role == 'admin' or ocorrencia.usuario_id == session.usuario_id %}
+                <div style="margin-top: 10px;">
+                    <a class="btn" href="{{ url_for('editar_ocorrencia', ocorrencia_id=ocorrencia.id) }}">✏️ Editar</a>
+                    <a href="#" class="btn" onclick="excluirOcorrencia({{ ocorrencia.id }})">🗑️ Excluir</a>
+                </div>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div style="text-align: center; padding: 50px;">
+            <p>✨ Nenhuma ocorrência encontrada ✨</p>
+            {% if filtro_aluno or filtro_turma %}
+            <p>Nenhuma ocorrência corresponde aos filtros aplicados.</p>
+            <a class="btn" href="{{ url_for('listar_ocorrencias') }}">Limpar Filtros</a>
+            {% else %}
+            <p><a class="btn" href="{{ url_for('nova_ocorrencia') }}" style="margin-top: 20px;">➕ Registrar Primeira
+                    Ocorrência</a></p>
+            {% endif %}
+        </div>
+        {% endif %}
+
+    </div>
+
+    <script>
+        function toggleFiltros() {
+            const body = document.getElementById('filtrosBody');
+            const toggle = document.getElementById('filtrosToggle');
+            body.classList.toggle('collapsed');
+            toggle.classList.toggle('collapsed');
+
+            if (body.classList.contains('collapsed')) {
+                toggle.innerHTML = '<span>Abrir</span><span class="toggle-icon">▼</span>';
+            } else {
+                toggle.innerHTML = '<span>Fechar</span><span class="toggle-icon">▲</span>';
+            }
+        }
+
+        function excluirOcorrencia(id) {
+            if (confirm('Tem certeza que deseja excluir esta ocorrência?')) {
+                fetch('/ocorrencias/excluir/' + id, { method: 'POST' })
+                    .then(() => location.reload());
+            }
+        }
+    </script>
+</body>
+
+</html>

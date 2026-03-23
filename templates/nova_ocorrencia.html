@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Emprestar Material</title>
+    <title>Nova Ocorrência</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -19,7 +19,7 @@
 
     <div class="container">
         <div class="page-header">
-            <h1>📤 Empréstimo/Reserva</h1>
+            <h1>➕ Nova Ocorrência</h1>
             <div class="user-welcome">
                 <span>👋 Olá, {{ session.usuario_nome }}!</span>
                 {% if session.role == 'admin' %}
@@ -43,21 +43,14 @@
             <a href="{{ url_for('listar_ocorrencias') }}">📝 Ocorrências</a>
         </nav>
 
-        <div class="info-box">
-            <h3>{{ material["nome"] }}</h3>
-            <p><strong>Categoria:</strong> {{ material["categoria"] }}</p>
-            {% if material["especificacoes"] %}
-            <p><strong>Especificações:</strong> {{ material["especificacoes"] }}</p>
-            {% endif %}
-            <p><strong>Total por horário:</strong> {{ material["quantidade_total"] }} unidades por aula</p>
-            <a class="btn" href="{{ url_for('index') }}" style="margin-top: 20px;">❌ Cancelar</a>
-        </div>
-
         <form method="post">
             <div class="info-box" style="background: #e8f5e9; margin-bottom: 20px;">
                 <p><strong>👨‍🏫 Professor responsável:</strong> {{ session.usuario_nome }}</p>
-                <p><strong>📧 Email:</strong> {{ session.usuario_email }}</p>
+                <p><strong>📅 Data:</strong> {{ datetime.now().strftime("%d/%m/%Y") }}</p>
             </div>
+
+            <label for="nome_aluno">Nome do Aluno:</label>
+            <input type="text" name="nome_aluno" id="nome_aluno" placeholder="Nome completo do aluno" required autocomplete="off">
 
             <label for="turma">Turma:</label>
             <select name="turma" required>
@@ -73,44 +66,21 @@
                 </optgroup>
             </select>
 
-            <label for="horario">Horário/Aula:</label>
-            <select name="horario" id="horario" required>
-                {% for i in range(horarios|length) %}
-                <option value="{{ i }}">{{ horarios[i] }}</option>
-                {% endfor %}
-            </select>
+            <label for="ocorrencia">Ocorrência:</label>
+            <textarea name="ocorrencia" id="ocorrencia" rows="4" placeholder="Descreva o que aconteceu..." required></textarea>
 
-            <label for="quantidade">Quantidade:</label>
-            <input type="number" name="quantidade" id="quantidade" min="1" max="{{ material['quantidade_total'] }}" value="1" required>
+            <label for="observacao">Observação (opcional):</label>
+            <textarea name="observacao" id="observacao" rows="3" placeholder="Observações adicionais..."></textarea>
 
-            <label for="data_retirada">Data de Retirada:</label>
-            <input type="date" name="data_retirada" id="data_retirada" value="{{ hoje }}" min="{{ hoje }}" required>
-            <div class="data-info">
-                ℹ️ Se escolher a data de hoje, o material será emprestado imediatamente.<br>
-                📅 Se escolher uma data futura, será feita uma reserva.
-            </div>
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                <input type="checkbox" name="notificar_pais" style="width: auto;">
+                <span>📢 Notificar os pais sobre esta ocorrência</span>
+            </label>
 
-            <div class="info-box" style="margin-top: 10px; background: #fff3e0;">
-                <p><strong>📊 Disponibilidade por horário (hoje):</strong></p>
-                {% for horario in horarios %}
-                <p>• {{ horario }}: 
-                    {% set disp_manha = disponibilidades.get('Manhã_' + horario, 0) %}
-                    {% set disp_tarde = disponibilidades.get('Tarde_' + horario, 0) %}
-                    Manhã: {{ disp_manha }} | Tarde: {{ disp_tarde }} unidades
-                </p>
-                {% endfor %}
-            </div>
-
-            <button type="submit" value="✅ Confirmar">✅ Confirmar</button>
+            <button type="submit">✅ Registrar Ocorrência</button>
         </form>
 
-        
+        <a class="btn" href="{{ url_for('listar_ocorrencias') }}" style="margin-top: 20px;">⬅️ Voltar</a>
     </div>
-
-    <script>
-        const dataInput = document.getElementById('data_retirada');
-        const hoje = new Date().toISOString().split('T')[0];
-        dataInput.min = hoje;
-    </script>
 </body>
 </html>

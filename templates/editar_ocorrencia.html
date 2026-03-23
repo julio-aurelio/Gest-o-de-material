@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Editar Ocorrência</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div id="flash-container">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="container">
+        <div class="page-header">
+            <h1>✏️ Editar Ocorrência</h1>
+            <div class="user-welcome">
+                <span>👋 Olá, {{ session.usuario_nome }}!</span>
+                {% if session.role == 'admin' %}
+                <span class="badge-admin">Admin</span>
+                {% else %}
+                <span class="badge-professor">Professor</span>
+                {% endif %}
+                <a href="{{ url_for('logout') }}" class="logout-link">🚪 Sair</a>
+            </div>
+        </div>
+
+        <nav>
+            <a href="{{ url_for('index') }}">📦 Materiais</a>
+            {% if session.role == 'admin' %}
+            <a href="{{ url_for('listar_usuarios') }}">👥 Usuários</a>
+            <a href="{{ url_for('admin_dashboard') }}">📊 Dashboard</a>
+            {% endif %}
+            <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
+            <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
+            <a href="{{ url_for('reservas') }}">⏳ Reservas</a>
+            <a href="{{ url_for('listar_ocorrencias') }}">📝 Ocorrências</a>
+        </nav>
+
+        <form method="post">
+            <div class="info-box" style="background: #e8f5e9; margin-bottom: 20px;">
+                <p><strong>👨‍🏫 Professor responsável:</strong> {{ ocorrencia.usuario_nome }}</p>
+                <p><strong>📅 Data:</strong> {{ ocorrencia.data_ocorrencia }}</p>
+            </div>
+
+            <label for="nome_aluno">Nome do Aluno:</label>
+            <input type="text" name="nome_aluno" id="nome_aluno" value="{{ ocorrencia.nome_aluno }}" required autocomplete="off">
+
+            <label for="turma">Turma:</label>
+            <select name="turma" required>
+                <optgroup label="🌅 Manhã">
+                    {% for turma in turmas_manha %}
+                    <option value="{{ turma }}" {% if ocorrencia.turma == turma %}selected{% endif %}>{{ turma }}</option>
+                    {% endfor %}
+                </optgroup>
+                <optgroup label="🌙 Tarde">
+                    {% for turma in turmas_tarde %}
+                    <option value="{{ turma }}" {% if ocorrencia.turma == turma %}selected{% endif %}>{{ turma }}</option>
+                    {% endfor %}
+                </optgroup>
+            </select>
+
+            <label for="ocorrencia">Ocorrência:</label>
+            <textarea name="ocorrencia" id="ocorrencia" rows="4" required>{{ ocorrencia.ocorrencia }}</textarea>
+
+            <label for="observacao">Observação:</label>
+            <textarea name="observacao" id="observacao" rows="3">{{ ocorrencia.observacao or '' }}</textarea>
+
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                <input type="checkbox" name="notificar_pais" style="width: auto;" {% if ocorrencia.notificar_pais %}checked{% endif %}>
+                <span>📢 Notificar os pais sobre esta ocorrência</span>
+            </label>
+
+            <button type="submit">💾 Salvar Alterações</button>
+        </form>
+
+        <a class="btn" href="{{ url_for('listar_ocorrencias') }}" style="margin-top: 20px;">⬅️ Voltar</a>
+    </div>
+</body>
+</html>

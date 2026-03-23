@@ -714,6 +714,137 @@ def admin_dashboard():
                          top_materiais=top_5,
                          ultimos_emprestimos=ultimos_emprestimos)
 
+# ==================== OCORRÊNCIAS ====================
+@app.route("/ocorrencias")
+@login_required
+def listar_ocorrencias():
+    """Lista ocorrências com filtros - professores veem as próprias, admin vê todas"""
+    
+    # Pegar filtros da URL
+    filtro_aluno = request.args.get("aluno", "").strip()
+    filtro_turma = request.args.get("turma", "").strip()
+    
+    # Base da query
+    if session['role'] == 'admin':
+        query = supabase.table("ocorrencias").select("*")
+    else:
+        query = supabase.table("ocorrencias").select("*").eq("usuario_id", session['usuario_id'])
+    
+    # Aplicar filtro de aluno (busca parcial)
+    if filtro_aluno:
+        query = query.ilike("nome_aluno", f"%{filtro_aluno}%")
+    
+    # Aplicar filtro de turma
+    if filtro_turma:
+        query = query.eq("turma", filtro_turma)
+    
+    # Ordenar
+    ocorrencias = query.order("data_ocorrencia", desc=True).order("created_at", desc=True).execute().data
+    
+    # Contar notificações pendentes
+    notificacoes_pendentes = sum(1 for o in ocorrencias if o.get("notificar_pais"))
+    
+    return render_template("ocorrencias.html", 
+                         ocorrencias=ocorrencias, 
+                         filtro_aluno=filtro_aluno,
+                         filtro_turma=filtro_turma,
+                         turmas_manha=TURMAS_MANHA,
+                         turmas_tarde=TURMAS_TARDE,
+                         notificacoes_pendentes=notificacoes_pendentes)
+
+@app.route("/ocorrencias/nova", methods=["GET", "POST"])
+@login_required
+def nova_ocorrencia():
+    """Criar nova ocorrência"""
+    if request.method == "POST":
+        nome_aluno = request.form["nome_aluno"].strip()
+        turma = request.form["turma"]
+        ocorrencia = request.form["ocorrencia"].strip()
+        observacao = request.form.get("observacao", "").strip()
+        notificar_pais = request.form.get("notificar_pais") == "on"
+        
+        if not nome_aluno or not ocorrencia:
+            flash("Nome do aluno e ocorrência são obrigatórios.", "error")
+            return redirect(url_for("nova_ocorrencia"))
+        
+        supabase.table("ocorrencias").insert({
+            "usuario_id": session['usuario_id'],
+            "usuario_nome": session['usuario_nome'],
+            "data_ocorrencia": datetime.now().strftime("%Y-%m-%d"),
+            "nome_aluno": nome_aluno,
+            "turma": turma,
+            "ocorrencia": ocorrencia,
+            "observacao": observacao,
+            "notificar_pais": notificar_pais,
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }).execute()
+        
+        cache.clear()
+        flash("Ocorrência registrada com sucesso!", "success")
+        return redirect(url_for("listar_ocorrencias"))
+    
+    return render_template("nova_ocorrencia.html", turmas_manha=TURMAS_MANHA, turmas_tarde=TURMAS_TARDE, datetime=datetime)
+
+@app.route("/ocorrencias/editar/<int:ocorrencia_id>", methods=["GET", "POST"])
+@login_required
+def editar_ocorrencia(ocorrencia_id):
+    """Editar ocorrência - apenas quem criou ou admin"""
+    ocorrencia = supabase.table("ocorrencias").select("*").eq("id", ocorrencia_id).single().execute().data
+    
+    if not ocorrencia:
+        flash("Ocorrência não encontrada.", "error")
+        return redirect(url_for("listar_ocorrencias"))
+    
+    # Verificar permissão
+    if session['role'] != 'admin' and ocorrencia['usuario_id'] != session['usuario_id']:
+        flash("Você só pode editar suas próprias ocorrências.", "error")
+        return redirect(url_for("listar_ocorrencias"))
+    
+    if request.method == "POST":
+        nome_aluno = request.form["nome_aluno"].strip()
+        turma = request.form["turma"]
+        ocorrencia_text = request.form["ocorrencia"].strip()
+        observacao = request.form.get("observacao", "").strip()
+        notificar_pais = request.form.get("notificar_pais") == "on"
+        
+        if not nome_aluno or not ocorrencia_text:
+            flash("Nome do aluno e ocorrência são obrigatórios.", "error")
+            return redirect(url_for("editar_ocorrencia", ocorrencia_id=ocorrencia_id))
+        
+        supabase.table("ocorrencias").update({
+            "nome_aluno": nome_aluno,
+            "turma": turma,
+            "ocorrencia": ocorrencia_text,
+            "observacao": observacao,
+            "notificar_pais": notificar_pais
+        }).eq("id", ocorrencia_id).execute()
+        
+        cache.clear()
+        flash("Ocorrência atualizada com sucesso!", "success")
+        return redirect(url_for("listar_ocorrencias"))
+    
+    return render_template("editar_ocorrencia.html", ocorrencia=ocorrencia, turmas_manha=TURMAS_MANHA, turmas_tarde=TURMAS_TARDE)
+
+@app.route("/ocorrencias/excluir/<int:ocorrencia_id>", methods=["POST"])
+@login_required
+def excluir_ocorrencia(ocorrencia_id):
+    """Excluir ocorrência - apenas quem criou ou admin"""
+    ocorrencia = supabase.table("ocorrencias").select("*").eq("id", ocorrencia_id).single().execute().data
+    
+    if not ocorrencia:
+        flash("Ocorrência não encontrada.", "error")
+        return redirect(url_for("listar_ocorrencias"))
+    
+    # Verificar permissão
+    if session['role'] != 'admin' and ocorrencia['usuario_id'] != session['usuario_id']:
+        flash("Você só pode excluir suas próprias ocorrências.", "error")
+        return redirect(url_for("listar_ocorrencias"))
+    
+    supabase.table("ocorrencias").delete().eq("id", ocorrencia_id).execute()
+    cache.clear()
+    flash("Ocorrência excluída com sucesso!", "success")
+    return redirect(url_for("listar_ocorrencias"))
+
 # ==================== PROCESSAR RESERVAS ====================
 @app.route("/processar_reservas")
 @admin_required

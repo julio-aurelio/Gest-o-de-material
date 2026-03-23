@@ -829,3 +829,348 @@ span.indisponivel {
         padding: 8px;
     }
 }
+
+/* ==================== FILTROS MELHORADOS ==================== */
+.filtros-container {
+    background: linear-gradient(135deg, var(--white) 0%, #fafafa 100%);
+    padding: 0;
+    border-radius: 20px;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+    overflow: hidden;
+    border: 1px solid rgba(0, 121, 107, 0.1);
+    width: 100%;
+    max-width: 1100px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.filtros-container:hover {
+    box-shadow: 0 8px 30px rgba(0, 121, 107, 0.12);
+    transform: translateY(-2px);
+}
+
+/* HEADER */
+.filtros-header {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    padding: 18px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+}
+
+.filtros-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: var(--white);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.resultados-counter {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 4px 12px;
+    border-radius: 30px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.filtros-toggle {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: var(--white);
+    cursor: pointer;
+    padding: 8px 16px;
+    border-radius: 30px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.filtros-toggle:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.02);
+}
+
+.filtros-toggle .toggle-icon {
+    transition: transform 0.3s ease;
+    font-size: 12px;
+}
+
+.filtros-toggle.collapsed .toggle-icon {
+    transform: rotate(180deg);
+}
+
+/* BODY */
+.filtros-body {
+    padding: 28px;
+    transition: all 0.3s ease;
+    max-height: 500px;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+}
+
+.filtros-body.collapsed {
+    max-height: 0;
+    padding: 0 28px;
+}
+
+/* FORM CENTRALIZADO */
+.filtros-form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    width: 100%;
+    max-width: 600px;
+}
+
+/* INPUT GROUP */
+.filtro-group {
+    width: 100%;
+    max-width: 600px;
+    position: relative;
+}
+
+.filtro-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary-dark);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.filtro-group input,
+.filtro-group select {
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 14px;
+    border: 2px solid #e8e8e8;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+    background: var(--white);
+    color: var(--dark);
+}
+
+.filtro-group input:hover,
+.filtro-group select:hover {
+    border-color: var(--primary-light);
+}
+
+.filtro-group input:focus,
+.filtro-group select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(0, 121, 107, 0.1);
+}
+
+.filtro-group input::placeholder {
+    color: #bbb;
+    font-size: 13px;
+}
+
+.filtro-group .input-icon {
+    position: absolute;
+    right: 14px;
+    top: 42px;
+    color: #bbb;
+    font-size: 16px;
+    pointer-events: none;
+}
+
+/* BOTÕES */
+.filtro-actions {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+}
+
+.filtro-actions .btn {
+    width: 100%;
+    max-width: 600px;
+    justify-content: center;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+/* BOTÃO FILTRAR */
+.btn-filtrar {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    padding: 14px;
+    border-radius: 12px;
+    color: white;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 121, 107, 0.3);
+}
+
+.btn-filtrar:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0, 121, 107, 0.4);
+    background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+}
+
+/* BOTÃO LIMPAR */
+.btn-limpar {
+    background: #f5f5f5;
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid #e0e0e0;
+    cursor: pointer;
+    color: var(--gray);
+}
+
+.btn-limpar:hover {
+    background: #e8e8e8;
+    color: var(--dark);
+    transform: translateY(-2px);
+}
+
+/* INFO DE FILTROS ATIVOS */
+.filtro-info {
+    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6e0 100%);
+    padding: 14px 24px;
+    margin: 0 24px 24px 24px;
+    border-radius: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    border-left: 4px solid var(--success);
+}
+
+.filtro-info p {
+    margin: 0;
+    font-size: 14px;
+    color: #2e7d32;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.filtro-info p strong {
+    color: var(--primary-dark);
+    font-weight: 700;
+}
+
+.filtro-info .badge-filtro {
+    background: var(--success);
+    color: var(--white);
+    padding: 6px 14px;
+    border-radius: 30px;
+    font-size: 12px;
+    font-weight: 600;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.filtro-info .btn-limpar-filtro {
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--success);
+    padding: 6px 16px;
+    border-radius: 30px;
+    font-size: 12px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.filtro-info .btn-limpar-filtro:hover {
+    background: white;
+    transform: scale(1.02);
+}
+
+/* ==================== MOBILE ==================== */
+@media (max-width: 768px) {
+    .filtros-header {
+        padding: 14px 18px;
+    }
+    
+    .filtros-header h3 {
+        font-size: 16px;
+    }
+    
+    .resultados-counter {
+        font-size: 11px;
+        padding: 4px 10px;
+    }
+    
+    .filtros-toggle {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+    
+    .filtros-body {
+        padding: 20px;
+    }
+    
+    .filtros-body.collapsed {
+        padding: 0 20px;
+    }
+    
+    .filtros-form {
+        max-width: 100%;
+        gap: 15px;
+    }
+    
+    .filtro-group {
+        max-width: 100%;
+    }
+    
+    .filtro-group label {
+        font-size: 11px;
+    }
+    
+    .filtro-group input,
+    .filtro-group select {
+        padding: 10px 14px;
+        font-size: 14px;
+    }
+    
+    .filtro-group .input-icon {
+        top: 40px;
+        right: 12px;
+        font-size: 14px;
+    }
+    
+    .filtro-actions .btn {
+        max-width: 100%;
+        padding: 12px;
+    }
+    
+    .filtro-info {
+        margin: 0 18px 18px 18px;
+        padding: 12px 16px;
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .filtro-info p {
+        font-size: 13px;
+        justify-content: center;
+    }
+    
+    .filtro-info .badge-filtro,
+    .filtro-info .btn-limpar-filtro {
+        padding: 5px 12px;
+        font-size: 11px;
+    }
+}
