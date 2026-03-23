@@ -25,7 +25,8 @@
     padding: 0;
 }
 
-html, body {
+html,
+body {
     min-height: 100%;
     height: 100vh;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -90,7 +91,10 @@ nav a:hover {
 }
 
 /* ==================== BOTÕES ==================== */
-.btn, button[type="submit"], .login-btn, .cadastro-btn {
+.btn,
+button[type="submit"],
+.login-btn,
+.cadastro-btn {
     display: inline-block;
     background: var(--primary);
     color: var(--white);
@@ -105,7 +109,10 @@ nav a:hover {
     margin-top: 5px;
 }
 
-.btn:hover, button[type="submit"]:hover, .login-btn:hover, .cadastro-btn:hover {
+.btn:hover,
+button[type="submit"]:hover,
+.login-btn:hover,
+.cadastro-btn:hover {
     background: var(--primary-dark);
     transform: translateY(-2px);
     box-shadow: var(--shadow-hover);
@@ -248,7 +255,8 @@ li p {
     font-weight: 500;
 }
 
-span.emprestado, span.reservado {
+span.emprestado,
+span.reservado {
     color: var(--danger);
     font-weight: bold;
     margin-bottom: 10px;
@@ -362,15 +370,18 @@ span.indisponivel {
     animation: slidefade 0.5s ease forwards;
 }
 
-.flash.success, .flash.sucesso {
+.flash.success,
+.flash.sucesso {
     background-color: var(--success);
 }
 
-.flash.error, .flash.erro {
+.flash.error,
+.flash.erro {
     background-color: var(--danger);
 }
 
-.flash.warning, .flash.aviso {
+.flash.warning,
+.flash.aviso {
     background-color: var(--warning);
 }
 
@@ -379,6 +390,7 @@ span.indisponivel {
         opacity: 0;
         transform: translateX(-50%) translateY(-20px);
     }
+
     100% {
         opacity: 1;
         transform: translateX(-50%) translateY(0);
@@ -436,7 +448,8 @@ span.indisponivel {
     box-shadow: var(--shadow);
 }
 
-.user-table th, .user-table td {
+.user-table th,
+.user-table td {
     padding: 12px;
     text-align: left;
     border-bottom: 1px solid #e0e0e0;
@@ -527,7 +540,8 @@ span.indisponivel {
 }
 
 /* ==================== LOGIN/CADASTRO CONTAINERS ==================== */
-.login-container, .cadastro-container {
+.login-container,
+.cadastro-container {
     max-width: 450px;
     margin: 50px auto;
     background: var(--white);
@@ -536,17 +550,20 @@ span.indisponivel {
     box-shadow: var(--shadow-hover);
 }
 
-.login-header, .cadastro-header {
+.login-header,
+.cadastro-header {
     text-align: center;
     margin-bottom: 30px;
 }
 
-.login-header h1, .cadastro-header h1 {
+.login-header h1,
+.cadastro-header h1 {
     font-size: 28px;
     margin-bottom: 10px;
 }
 
-.login-header p, .cadastro-header p {
+.login-header p,
+.cadastro-header p {
     color: var(--gray);
     font-size: 14px;
 }
@@ -660,414 +677,155 @@ span.indisponivel {
 }
 
 @media (max-width: 768px) {
+
+    html {
+        font-size: 14px;
+    }
+
     .container {
         width: 95%;
-        padding: 12px;
-        margin: 15px auto;
+        padding: 10px;
+        margin: 10px auto;
     }
-    
-    body {
-        font-size: 20px;
-    }
-    
+
+    /* TÍTULOS */
     h1 {
-        font-size: 48px;
-        margin-bottom: 35px;
+        font-size: 1.6rem;
+        margin-bottom: 12px;
     }
-    
+
     h2 {
-        font-size: 44px;
-        margin-bottom: 28px;
+        font-size: 1.3rem;
     }
-    
+
     h3 {
-        font-size: 40px;
-        margin-bottom: 25px;
+        font-size: 1.1rem;
     }
-    
-    /* NAVEGAÇÃO - BOTÕES COM ALTURA FIXA */
+
+    /* NAV */
     nav {
-        gap: 30px;
-        margin-bottom: 60px;
-        flex-direction: column;
-        align-items: center;
+        display: flex;
+        flex-direction: row;
+        /* VOLTA PRO LADO */
+        flex-wrap: wrap;
+        /* quebra linha se não couber */
+        justify-content: center;
+        gap: 8px;
     }
-    
+
     nav a {
-        height: 100px;
-        line-height: 100px;
-        padding: 0 40px;
-        font-size: 38px;
-        border-radius: 50px;
-        font-weight: 700;
-        min-width: 320px;
+        flex: 1 1 calc(50% - 8px);
+        /* 2 por linha */
+        padding: 10px;
+        font-size: 0.9rem;
         text-align: center;
-        width: 100%;
-        max-width: 400px;
-        display: inline-block;
+
+        border-radius: 10px;
     }
-    
-    /* CARDS 2 POR 2 */
+
+    /* GRID */
     ul {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 35px;
+        grid-template-columns: 1fr;
+        gap: 12px;
     }
-    
+
     li {
-        padding: 40px;
-        border-radius: 35px;
+        padding: 12px;
     }
-    
-    li h3 {
-        font-size: 38px;
-        margin-bottom: 22px;
-        padding-bottom: 20px;
-    }
-    
+
     li p {
-        font-size: 28px;
-        margin-bottom: 20px;
+        font-size: 0.9rem;
     }
-    
-    /* BOTÕES COM ALTURA FIXA */
-    .btn, button[type="submit"], .login-btn, .cadastro-btn {
-        height: 100px;
-        line-height: 100px;
-        padding: 0 40px;
-        font-size: 34px;
-        border-radius: 50px;
-        margin-top: 25px;
-        font-weight: 700;
-        min-width: 340px;
-        text-align: center;
+
+    /* BOTÕES */
+    .btn,
+    button[type="submit"],
+    .login-btn,
+    .cadastro-btn {
         width: 100%;
-        max-width: 500px;
-        display: inline-block;
+        padding: 10px;
+        font-size: 0.95rem;
     }
-    
+
     .btn-small {
-        height: 70px;
-        line-height: 70px;
-        padding: 0 25px;
-        font-size: 24px;
+        padding: 6px;
+        font-size: 0.75rem;
     }
-    
-    /* FORMULÁRIOS GIGANTESCOS */
+
+    /* FORM */
     form {
-        padding: 55px;
-        gap: 48px;
-        border-radius: 48px;
-        max-width: 100%;
+        padding: 15px;
+        gap: 12px;
     }
-    
-    input[type="text"],
-    input[type="email"],
-    input[type="password"],
-    input[type="number"],
-    input[type="date"],
+
+    input,
     select,
     textarea {
-        height: 90px;
-        padding: 0 25px;
-        font-size: 32px;
-        border-radius: 45px;
-        line-height: 90px;
+        font-size: 0.95rem;
+        padding: 8px;
     }
-    
-    textarea {
-        height: auto;
-        min-height: 150px;
-        line-height: 1.4;
-        padding: 20px 25px;
-    }
-    
+
     label {
-        font-size: 32px;
-        margin-bottom: -5px;
+        font-size: 0.8rem;
     }
-    
-    /* STATS BAR */
-    .stats-bar {
-        font-size: 28px;
-        padding: 32px;
-        border-radius: 40px;
-        margin-bottom: 50px;
+
+    /* SEARCH */
+    #search-form {
+        flex-direction: column;
+        gap: 8px;
     }
-    
+
+    #search-form input[type="submit"] {
+        width: 100%;
+    }
+
     /* HEADER */
     .page-header {
-        margin-bottom: 40px;
         flex-direction: column;
-        gap: 20px;
+        align-items: flex-start;
+        gap: 8px;
     }
-    
-    .page-header h1 {
-        font-size: 52px;
-        margin-bottom: 25px;
-    }
-    
+
     .user-welcome {
-        text-align: center;
+        text-align: left;
     }
-    
-    .user-welcome span {
-        font-size: 28px;
-    }
-    
-    .badge-admin, .badge-professor {
-        height: 50px;
-        line-height: 50px;
-        padding: 0 20px;
-        font-size: 22px;
-        border-radius: 30px;
-        display: inline-block;
-    }
-    
-    .logout-link {
-        font-size: 28px;
-        margin-left: 25px;
-    }
-    
+
     /* DASHBOARD */
     .dashboard-stats {
         grid-template-columns: 1fr;
-        gap: 35px;
-        margin-bottom: 55px;
+        gap: 12px;
     }
-    
-    .stat-card {
-        padding: 45px;
-        border-radius: 40px;
-    }
-    
+
     .stat-number {
-        font-size: 68px;
+        font-size: 1.5rem;
     }
-    
+
     .stat-label {
-        font-size: 26px;
+        font-size: 0.8rem;
     }
-    
-    .dashboard-section {
-        padding: 45px;
-        border-radius: 40px;
-    }
-    
-    .dashboard-section h2 {
-        font-size: 44px;
-        margin-bottom: 35px;
-        padding-bottom: 22px;
-    }
-    
-    /* TABELAS */
+
+    /* TABELA */
     .user-table {
         display: block;
         overflow-x: auto;
-        white-space: nowrap;
-        border-radius: 35px;
     }
-    
-    .user-table th, .user-table td {
-        padding: 28px;
-        font-size: 26px;
-    }
-    
-    .user-table th {
-        font-size: 28px;
-        padding: 28px;
-    }
-    
-    /* INFO BOX */
-    .info-box {
-        padding: 45px;
-        border-radius: 40px;
-        margin-bottom: 50px;
-    }
-    
-    .info-box h3 {
-        font-size: 42px;
-    }
-    
-    .info-box p {
-        font-size: 28px;
-    }
-    
-    .disponibilidade-box {
-        padding: 35px;
-        font-size: 28px;
-        border-radius: 32px;
-    }
-    
-    .data-info {
-        font-size: 26px;
-    }
-    
-    /* BARRA DE PESQUISA */
-    #search-form {
-        gap: 25px;
-        margin-bottom: 60px;
-        max-width: 100%;
-        flex-direction: column;
-    }
-    
-    #search-form input[type="text"] {
-        height: 90px;
-        padding: 0 25px;
-        font-size: 32px;
-        border-radius: 45px;
-        width: 100%;
-        line-height: 90px;
-    }
-    
-    #search-form input[type="submit"] {
-        height: 90px;
-        padding: 0 30px;
-        font-size: 32px;
-        border-radius: 45px;
-        width: 100%;
-        line-height: 90px;
-    }
-    
-    #suggestions li {
-        padding: 28px 40px;
-        font-size: 28px;
-        height: 80px;
-        line-height: 80px;
-    }
-    
-    /* FLASH MESSAGES */
-    .flash {
-        font-size: 28px;
-        padding: 28px 40px;
-        border-radius: 50px;
-        width: 95%;
-        min-height: 90px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    
-    /* LOGIN/CADASTRO */
-    .login-container, .cadastro-container {
-        max-width: 95%;
-        margin: 80px auto;
-        padding: 65px;
-        border-radius: 48px;
-    }
-    
-    .login-header h1, .cadastro-header h1 {
-        font-size: 56px;
-        margin-bottom: 28px;
-    }
-    
-    .login-header p, .cadastro-header p {
-        font-size: 28px;
-    }
-    
-    /* HORÁRIOS */
-    .horario-turno {
-        margin-top: 28px;
-        font-size: 28px;
-    }
-    
-    .horario-turno strong {
-        font-size: 30px;
-        margin-bottom: 18px;
-    }
-    
-    .horario-lista {
-        gap: 15px;
-    }
-    
-    .horario-item {
-        height: 55px;
-        line-height: 55px;
-        padding: 0 20px;
-        font-size: 24px;
-        border-radius: 30px;
-        display: inline-block;
-    }
-    
-    .quantidade-turno {
-        padding: 32px 35px;
-        margin: 25px 0;
-    }
-    
-    .quantidade-turno p {
-        font-size: 28px;
-    }
-}
 
-/* Celular muito pequeno (até 480px) - 1 coluna */
-@media (max-width: 480px) {
-    ul {
-        grid-template-columns: 1fr;
-        gap: 35px;
+    .user-table th,
+    .user-table td {
+        font-size: 0.75rem;
+        padding: 8px;
     }
-    
-    h1 {
-        font-size: 44px;
+
+    /* LOGIN */
+    .login-container,
+    .cadastro-container {
+        width: 95%;
+        padding: 15px;
     }
-    
-    h2 {
-        font-size: 40px;
-    }
-    
-    h3 {
-        font-size: 38px;
-    }
-    
-    nav a {
-        height: 90px;
-        line-height: 90px;
-        padding: 0 30px;
-        font-size: 34px;
-        min-width: 280px;
-    }
-    
-    .btn, button[type="submit"] {
-        height: 90px;
-        line-height: 90px;
-        padding: 0 35px;
-        font-size: 32px;
-    }
-    
-    input[type="text"],
-    input[type="email"],
-    input[type="password"],
-    input[type="number"],
-    input[type="date"],
-    select {
-        height: 85px;
-        line-height: 85px;
-        font-size: 30px;
-    }
-    
-    .page-header h1 {
-        font-size: 48px;
-    }
-    
-    li h3 {
-        font-size: 36px;
-    }
-    
-    li p {
-        font-size: 26px;
-    }
-    
-    .dashboard-stats {
-        grid-template-columns: 1fr;
-    }
-    
-    .stat-number {
-        font-size: 60px;
-    }
-    
-    .stat-label {
-        font-size: 24px;
-    }
-    
-    .login-header h1, .cadastro-header h1 {
-        font-size: 52px;
+
+    /* FLASH */
+    .flash {
+        font-size: 0.85rem;
+        padding: 8px;
     }
 }
