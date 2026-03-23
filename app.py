@@ -14,7 +14,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ==================== CACHE OTIMIZADO ====================
 class SimpleCache:
-    def __init__(self, timeout=300):
+    def __init__(self, timeout=600):  # 10 MINUTOS
         self.cache = {}
         self.timeout = timeout
     
@@ -32,7 +32,7 @@ class SimpleCache:
     def clear(self):
         self.cache.clear()
 
-cache = SimpleCache(timeout=300)
+cache = SimpleCache(timeout=600)
 
 # ==================== DECORADORES ====================
 def login_required(f):
