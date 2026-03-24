@@ -1,0 +1,24 @@
+SUPABASE_URL = "https://pnpybnpbqwiteocpbcbb.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBucHlibnBicXdpdGVvY3BiY2JiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDU0ODIsImV4cCI6MjA4OTU4MTQ4Mn0.LkBufgdceo1Qijj06g0dY2TyQmT7bOQSR9nPVpFUKm8"
+
+
+MELHORIAS PARA FAZER:
+
+.No pdf precisa aparece o campo de observação;
+.BUG PARA BAIXAR O PDF APENAS DA SALA;
+.Colocar a logo ou o cabeçalho da Escola no topo do pdf;
+.Criar um Arquivo apenas para JS (mais especifico na pasta static);
+.Fazer boas praticas (como: Tirar o JS ou css dos HTML fazer comentarios em tudo para quando outra pessoa for ler ou tentar usar);
+.DOCUMENTAR(readme) o projeto no git para futuras apresenatações;
+.As notificaçoes são para cada um admin, não uma para todos;
+.Fazer um sistema de filtro pra a dashboard e PARA a paginal inicial(index.html);
+.Arrumar a posição da sugestão de pesquisa, ELA tem q ficar em baixo do campo input, porem colada na borda DO INPUT;
+.Fazer boas particas no css e tirar redundancias, mas sem QUEBRAR o site;
+.Colocar a logo da escola no site tmb, ao lado do titulo seria legal;
+.Melhorar o sistema de VAR do css, deixando apenas as cores que realmente vão ser usadas e tmb trocar TODAS as cores que tem nas tags pelo VAR(boas praticas);
+.MELHORAR URGENTIMENTE O ESTILO DA MENSAGEM EM JAVA SCRIPT (alert e etc.);
+.Colocar em todas as paginas que usam a NAV: 📊 Total de materiais: 28 | 📖 Emprestados: 8 | ⏳ Reservados: 6 PARA FICAR PADRONIZADO, tirando nas paginas que n precisam de NAV como por ex a cadastro.html;
+.Deixar um modo escuro e modo claro a pessoa escolher;
+.Fazer uma pagina para a pessoa ver sua conta, ali vai ter informçoes basicas como senha que vai ficar escondida claro, ai o usuario vai clicar no botão para aparecer e outras demais informçoes;
+.MELHORAR DE FORMA URGENTE A SEGURANÇA DO SITE, esconder a chave do banco de dados, esconder a senha dos usuario usando hash ou algo do tipo;
+.Tentar melhorar um pouco mais a velocidade do site para a vercel;
