@@ -76,6 +76,18 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def cron_required(f):
+    """Decorator para endpoints de cron job"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        api_key = request.headers.get("X-Cron-Secret") or request.args.get("key")
+        expected_key = os.environ.get("CRON_SECRET", "sua_chave_secreta_cron_aqui")
+        
+        if api_key != expected_key:
+            return jsonify({"error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
 def pode_editar_reserva(reserva_id, usuario_id, role):
     if role == 'admin':
         return True
@@ -111,6 +123,86 @@ def get_turno_by_turma(turma):
     elif turma in TURMAS_TARDE:
         return "Tarde"
     return "Manhã"
+
+# ==================== FUNÇÕES DE PROCESSAMENTO AUTOMÁTICO ====================
+def processar_reservas_auto():
+    """
+    Processa automaticamente todas as reservas que deveriam ser retiradas hoje ou antes.
+    Esta função é chamada automaticamente quando alguém acessa o sistema.
+    """
+    try:
+        hoje = datetime.now().strftime("%Y-%m-%d")
+        processadas = 0
+        adiadas = 0
+        erros = 0
+        
+        # Buscar reservas com data de retirada <= hoje
+        reservas = supabase.table("reservas")\
+            .select("*")\
+            .lte("data_retirada", hoje)\
+            .execute().data
+        
+        if not reservas:
+            return {"success": True, "processadas": 0, "adiadas": 0, "mensagem": "Nenhuma reserva para processar"}
+        
+        for reserva in reservas:
+            try:
+                # Verificar disponibilidade
+                disponivel = get_disponibilidade_por_horario(
+                    reserva["material_id"], 
+                    reserva["data_retirada"], 
+                    reserva["turno"], 
+                    reserva["horario"]
+                )
+                
+                if disponivel >= reserva["quantidade_reservada"]:
+                    # Converter reserva em empréstimo
+                    data_devolucao_prevista = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+                    
+                    supabase.table("emprestimos").insert({
+                        "material_id": reserva["material_id"],
+                        "aluno": reserva["aluno"],
+                        "turma": reserva["turma"],
+                        "turno": reserva["turno"],
+                        "horario": reserva["horario"],
+                        "quantidade_emprestada": reserva["quantidade_reservada"],
+                        "usuario_id": reserva["usuario_id"],
+                        "usuario_nome": reserva.get("usuario_nome", ""),
+                        "data_emprestimo": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "data_emprestimo_data": reserva["data_retirada"],
+                        "data_devolucao_prevista": data_devolucao_prevista
+                    }).execute()
+                    
+                    supabase.table("reservas").delete().eq("id", reserva["id"]).execute()
+                    processadas += 1
+                else:
+                    # Adiar para amanhã
+                    amanha = (datetime.strptime(reserva["data_retirada"], "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+                    supabase.table("reservas").update({"data_retirada": amanha}).eq("id", reserva["id"]).execute()
+                    adiadas += 1
+                    
+            except Exception as e:
+                erros += 1
+                print(f"Erro ao processar reserva {reserva.get('id')}: {str(e)}")
+        
+        # Limpar cache após processar
+        cache.clear()
+        
+        # Log do resultado
+        resultado = f"Processamento automático - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Convertidas: {processadas}, Adiadas: {adiadas}, Erros: {erros}"
+        print(resultado)
+        
+        return {
+            "success": True,
+            "processadas": processadas,
+            "adiadas": adiadas,
+            "erros": erros,
+            "mensagem": f"Processadas: {processadas}, Adiadas: {adiadas}, Erros: {erros}"
+        }
+        
+    except Exception as e:
+        print(f"Erro crítico no processamento automático: {str(e)}")
+        return {"success": False, "error": str(e)}
 
 # ==================== FUNÇÕES OTIMIZADAS ====================
 def get_todos_dados():
@@ -209,7 +301,7 @@ def get_disponibilidade_por_horario(material_id, data, turno, horario):
     
     total = material["quantidade_total"]
     
-    # Buscar empréstimos e reservas em uma única consulta? Infelizmente não dá
+    # Buscar empréstimos e reservas
     emprestimos = supabase.table("emprestimos")\
         .select("quantidade_emprestada")\
         .eq("material_id", material_id)\
@@ -241,7 +333,6 @@ def login():
         email = request.form["email"].strip()
         senha = request.form["senha"].strip()
         
-        # Cache para tentativas de login (evita brute force, mas não cacheia dados sensíveis)
         usuario = supabase.table("usuarios")\
             .select("*")\
             .eq("email", email)\
@@ -299,17 +390,27 @@ def cadastrar_professor():
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }).execute()
         
-        cache.clear()  # Limpar cache ao criar usuário
+        cache.clear()
         flash("Conta criada com sucesso! Faça login.", "success")
         return redirect(url_for("login"))
     
     return render_template("cadastrar_professor.html")
 
-# ==================== ROTA PRINCIPAL ====================
+# ==================== ROTA PRINCIPAL COM PROCESSAMENTO AUTOMÁTICO ====================
 @app.route("/")
 @login_required
 def index():
     try:
+        # Processar reservas automaticamente (apenas uma vez por dia)
+        hoje = datetime.now().strftime("%Y-%m-%d")
+        cache_key_processado = f"processado_auto_{hoje}"
+        
+        if not cache.get(cache_key_processado):
+            resultado = processar_reservas_auto()
+            if resultado["success"] and (resultado["processadas"] > 0 or resultado["adiadas"] > 0):
+                flash(f"📅 Processamento automático: {resultado['mensagem']}", "info")
+            cache.set(cache_key_processado, True, timeout=86400)  # 24 horas
+        
         dados = get_todos_dados()
         return render_template(
             "index.html",
@@ -324,6 +425,41 @@ def index():
     except Exception as e:
         app.logger.error(f"Erro ao carregar dados: {str(e)}")
         return f"Erro ao carregar dados: {str(e)}", 500
+
+# ==================== ENDPOINT PARA CRON JOB EXTERNO ====================
+@app.route("/api/cron/processar-reservas", methods=["GET", "POST"])
+@cron_required
+def cron_processar_reservas():
+    """
+    Endpoint para ser chamado por GitHub Actions ou outro cron job.
+    Exemplo: curl -H "X-Cron-Secret: sua_chave_secreta" https://seu-app.vercel.app/api/cron/processar-reservas
+    """
+    try:
+        resultado = processar_reservas_auto()
+        return jsonify(resultado), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ==================== ROTA ADMIN PARA PROCESSAR RESERVAS MANUALMENTE ====================
+@app.route("/processar_reservas")
+@admin_required
+def processar_reservas_manual():
+    """Processa reservas manualmente (acesso apenas admin)"""
+    try:
+        resultado = processar_reservas_auto()
+        if resultado["success"]:
+            if resultado["processadas"] > 0 or resultado["adiadas"] > 0:
+                flash(f"✅ {resultado['mensagem']}", "success")
+            else:
+                flash("📌 Nenhuma reserva pendente para processar.", "info")
+        else:
+            flash(f"❌ Erro ao processar reservas: {resultado.get('error', 'Erro desconhecido')}", "error")
+        
+        cache.clear()
+    except Exception as e:
+        flash(f"Erro ao processar reservas: {str(e)}", "error")
+    
+    return redirect(url_for("index"))
 
 # ==================== CADASTRAR MATERIAL ====================
 @app.route("/cadastrar", methods=["GET", "POST"])
@@ -1025,49 +1161,6 @@ def marcar_todas_visualizadas():
     supabase.table("ocorrencias").update({"visualizada": True}).eq("visualizada", False).execute()
     cache.clear()
     return jsonify({"success": True})
-
-# ==================== PROCESSAR RESERVAS ====================
-@app.route("/processar_reservas")
-@admin_required
-def processar_reservas():
-    try:
-        hoje = datetime.now().strftime("%Y-%m-%d")
-        reservas_hoje = supabase.table("reservas").select("*").eq("data_retirada", hoje).execute().data
-        
-        for reserva in reservas_hoje:
-            disponivel = get_disponibilidade_por_horario(
-                reserva["material_id"], hoje, reserva["turno"], reserva["horario"]
-            )
-            
-            if disponivel >= reserva["quantidade_reservada"]:
-                data_devolucao_prevista = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
-                
-                supabase.table("emprestimos").insert({
-                    "material_id": reserva["material_id"],
-                    "aluno": reserva["aluno"],
-                    "turma": reserva["turma"],
-                    "turno": reserva["turno"],
-                    "horario": reserva["horario"],
-                    "quantidade_emprestada": reserva["quantidade_reservada"],
-                    "usuario_id": reserva["usuario_id"],
-                    "usuario_nome": reserva.get("usuario_nome", ""),
-                    "data_emprestimo": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "data_emprestimo_data": hoje,
-                    "data_devolucao_prevista": data_devolucao_prevista
-                }).execute()
-                
-                supabase.table("reservas").delete().eq("id", reserva["id"]).execute()
-                flash(f"Reserva para {reserva['aluno']} processada!", "success")
-            else:
-                amanha = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-                supabase.table("reservas").update({"data_retirada": amanha}).eq("id", reserva["id"]).execute()
-                flash(f"Reserva para {reserva['aluno']} adiada para amanhã (falta de material)", "warning")
-        
-        cache.clear()
-    except Exception as e:
-        flash(f"Erro ao processar reservas: {str(e)}", "error")
-    
-    return redirect(url_for("index"))
 
 # ==================== CONTEXT PROCESSOR GLOBAL ====================
 @app.context_processor

@@ -1,0 +1,14 @@
+name: Processar Reservas Diariamente
+
+on:
+  schedule:
+    - cron: '1 3 * * *'  # 00:01 horário de Brasília
+  workflow_dispatch:
+
+jobs:
+  processar-reservas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint para processar reservas
+        run: |
+          curl -X GET "https://gest-o-de-material-mu.vercel.app/api/cron/processar-reservas?key=${{ secrets.CRON_SECRET }}"
