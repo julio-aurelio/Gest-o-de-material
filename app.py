@@ -3,36 +3,56 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from supabase import create_client
 from datetime import datetime, timedelta
 from functools import wraps
+import time
+from threading import Lock
+from collections import defaultdict
 
 app = Flask(__name__)
-app.secret_key = "sua_chave_secreta_aqui_mude_isso_para_algo_seguro"
 
-SUPABASE_URL = "https://pnpybnpbqwiteocpbcbb.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBucHlibnBicXdpdGVvY3BiY2JiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDU0ODIsImV4cCI6MjA4OTU4MTQ4Mn0.LkBufgdceo1Qijj06g0dY2TyQmT7bOQSR9nPVpFUKm8"
+# ==================== CONFIGURAÇÕES ====================
+app.secret_key = os.environ.get("SECRET_KEY", "sua_chave_secreta_aqui_mude_isso_para_algo_seguro")
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://pnpybnpbqwiteocpbcbb.supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBucHlibnBicXdpdGVvY3BiY2JiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDU0ODIsImV4cCI6MjA4OTU4MTQ4Mn0.LkBufgdceo1Qijj06g0dY2TyQmT7bOQSR9nPVpFUKm8")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ==================== CACHE OTIMIZADO ====================
+# ==================== CACHE OTIMIZADO COM TTL ====================
 class SimpleCache:
-    def __init__(self, timeout=600):
+    def __init__(self, default_timeout=300):  # 5 minutos padrão
         self.cache = {}
-        self.timeout = timeout
+        self.lock = Lock()
+        self.default_timeout = default_timeout
     
     def get(self, key):
-        if key in self.cache:
-            data, timestamp = self.cache[key]
-            if datetime.now().timestamp() - timestamp < self.timeout:
-                return data
-            del self.cache[key]
+        with self.lock:
+            if key in self.cache:
+                data, timestamp = self.cache[key]
+                if time.time() - timestamp < self.default_timeout:
+                    return data
+                del self.cache[key]
         return None
     
-    def set(self, key, value):
-        self.cache[key] = (value, datetime.now().timestamp())
+    def set(self, key, value, timeout=None):
+        with self.lock:
+            timeout = timeout or self.default_timeout
+            self.cache[key] = (value, time.time())
     
-    def clear(self):
-        self.cache.clear()
+    def clear(self, pattern=None):
+        with self.lock:
+            if pattern is None:
+                self.cache.clear()
+            else:
+                keys_to_remove = [k for k in self.cache.keys() if pattern in k]
+                for k in keys_to_remove:
+                    del self.cache[k]
+    
+    def delete(self, key):
+        with self.lock:
+            if key in self.cache:
+                del self.cache[key]
 
-cache = SimpleCache(timeout=600)
+cache = SimpleCache(default_timeout=300)  # 5 minutos
 
 # ==================== DECORADORES ====================
 def login_required(f):
@@ -59,14 +79,25 @@ def admin_required(f):
 def pode_editar_reserva(reserva_id, usuario_id, role):
     if role == 'admin':
         return True
-    reserva = supabase.table("reservas").select("usuario_id").eq("id", reserva_id).single().execute().data
-    return reserva and reserva.get("usuario_id") == usuario_id
+    # Cache para verificação de permissão (curto prazo)
+    cache_key = f"reserva_owner_{reserva_id}"
+    owner = cache.get(cache_key)
+    if owner is None:
+        reserva = supabase.table("reservas").select("usuario_id").eq("id", reserva_id).single().execute().data
+        owner = reserva.get("usuario_id") if reserva else None
+        cache.set(cache_key, owner, timeout=60)  # 1 minuto
+    return owner == usuario_id
 
 def pode_devolver_emprestimo(emprestimo_id, usuario_id, role):
     if role == 'admin':
         return True
-    emprestimo = supabase.table("emprestimos").select("usuario_id").eq("id", emprestimo_id).single().execute().data
-    return emprestimo and emprestimo.get("usuario_id") == usuario_id
+    cache_key = f"emprestimo_owner_{emprestimo_id}"
+    owner = cache.get(cache_key)
+    if owner is None:
+        emprestimo = supabase.table("emprestimos").select("usuario_id").eq("id", emprestimo_id).single().execute().data
+        owner = emprestimo.get("usuario_id") if emprestimo else None
+        cache.set(cache_key, owner, timeout=60)
+    return owner == usuario_id
 
 # ==================== CONFIGURAÇÕES ====================
 CATEGORIAS = ["Esporte", "Educacional", "Outros"]
@@ -83,7 +114,7 @@ def get_turno_by_turma(turma):
 
 # ==================== FUNÇÕES OTIMIZADAS ====================
 def get_todos_dados():
-    """Busca TODOS os dados de uma vez e processa em memória"""
+    """Busca TODOS os dados de uma vez e processa em memória com cache"""
     cache_key = "todos_dados"
     cached = cache.get(cache_key)
     if cached:
@@ -91,27 +122,34 @@ def get_todos_dados():
     
     hoje = datetime.now().strftime("%Y-%m-%d")
     
-    materiais = supabase.table("materiais").select("*").execute().data
+    # Consultas paralelas otimizadas (usando select específico)
+    materiais = supabase.table("materiais").select("id,nome,categoria,quantidade_total,especificacoes,data_aquisicao,created_by").execute().data
+    
+    # Buscar empréstimos ativos de hoje em uma única consulta
     emprestimos = supabase.table("emprestimos")\
         .select("material_id, turno, horario, quantidade_emprestada, data_emprestimo_data")\
         .is_("data_devolucao_real", "null")\
-        .execute().data
-    reservas = supabase.table("reservas")\
-        .select("material_id, turno, horario, quantidade_reservada, data_retirada")\
+        .eq("data_emprestimo_data", hoje)\
         .execute().data
     
+    # Buscar reservas de hoje
+    reservas = supabase.table("reservas")\
+        .select("material_id, turno, horario, quantidade_reservada, data_retirada")\
+        .eq("data_retirada", hoje)\
+        .execute().data
+    
+    # Processar uso em memória
     uso = {}
     
     for e in emprestimos:
-        if e.get("data_emprestimo_data") == hoje:
-            key = f"{e['material_id']}_{e['turno']}_{e['horario']}"
-            uso[key] = uso.get(key, 0) + e.get("quantidade_emprestada", 1)
+        key = f"{e['material_id']}_{e['turno']}_{e['horario']}"
+        uso[key] = uso.get(key, 0) + e.get("quantidade_emprestada", 1)
     
     for r in reservas:
-        if r.get("data_retirada") == hoje:
-            key = f"{r['material_id']}_{r['turno']}_{r['horario']}"
-            uso[key] = uso.get(key, 0) + r.get("quantidade_reservada", 1)
+        key = f"{r['material_id']}_{r['turno']}_{r['horario']}"
+        uso[key] = uso.get(key, 0) + r.get("quantidade_reservada", 1)
     
+    # Processar cada material
     for material in materiais:
         total = material["quantidade_total"]
         horarios_manha = []
@@ -139,9 +177,14 @@ def get_todos_dados():
         material["disponiveis_tarde"] = total_disponivel_tarde
         material["disponiveis"] = total_disponivel_manha + total_disponivel_tarde
     
+    # Contagens otimizadas
     total_materiais = sum(m["quantidade_total"] for m in materiais)
-    total_emprestados = len(emprestimos)
-    total_reservados = len(reservas)
+    
+    # Contagem total de empréstimos ativos (não só de hoje)
+    total_emprestados = supabase.table("emprestimos").select("id", count="exact").is_("data_devolucao_real", "null").execute().count or 0
+    
+    # Contagem total de reservas
+    total_reservados = supabase.table("reservas").select("id", count="exact").execute().count or 0
     
     resultado = {
         'materiais': materiais,
@@ -154,6 +197,7 @@ def get_todos_dados():
     return resultado
 
 def get_disponibilidade_por_horario(material_id, data, turno, horario):
+    """Obtém disponibilidade com cache"""
     cache_key = f"disp_{material_id}_{data}_{turno}_{horario}"
     cached = cache.get(cache_key)
     if cached is not None:
@@ -165,6 +209,7 @@ def get_disponibilidade_por_horario(material_id, data, turno, horario):
     
     total = material["quantidade_total"]
     
+    # Buscar empréstimos e reservas em uma única consulta? Infelizmente não dá
     emprestimos = supabase.table("emprestimos")\
         .select("quantidade_emprestada")\
         .eq("material_id", material_id)\
@@ -186,7 +231,7 @@ def get_disponibilidade_por_horario(material_id, data, turno, horario):
     total_reservado = sum(r.get("quantidade_reservada", 1) for r in reservas)
     disponivel = total - total_emprestado - total_reservado
     
-    cache.set(cache_key, disponivel)
+    cache.set(cache_key, disponivel, timeout=60)  # 1 minuto
     return disponivel
 
 # ==================== ROTAS DE AUTENTICAÇÃO ====================
@@ -196,6 +241,7 @@ def login():
         email = request.form["email"].strip()
         senha = request.form["senha"].strip()
         
+        # Cache para tentativas de login (evita brute force, mas não cacheia dados sensíveis)
         usuario = supabase.table("usuarios")\
             .select("*")\
             .eq("email", email)\
@@ -253,6 +299,7 @@ def cadastrar_professor():
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }).execute()
         
+        cache.clear()  # Limpar cache ao criar usuário
         flash("Conta criada com sucesso! Faça login.", "success")
         return redirect(url_for("login"))
     
@@ -275,6 +322,7 @@ def index():
             usuario_role=session.get('role')
         )
     except Exception as e:
+        app.logger.error(f"Erro ao carregar dados: {str(e)}")
         return f"Erro ao carregar dados: {str(e)}", 500
 
 # ==================== CADASTRAR MATERIAL ====================
@@ -294,6 +342,7 @@ def cadastrar():
         existente = supabase.table("materiais")\
             .select("id")\
             .eq("nome", nome).eq("categoria", categoria)\
+            .limit(1)\
             .execute().data
 
         if existente:
@@ -510,7 +559,8 @@ def buscar():
         return redirect(url_for("index"))
 
     dados = get_todos_dados()
-    materiais = [m for m in dados['materiais'] if termo.lower() in m['nome'].lower() or termo.lower() in m['categoria'].lower()]
+    termo_lower = termo.lower()
+    materiais = [m for m in dados['materiais'] if termo_lower in m['nome'].lower() or termo_lower in m['categoria'].lower()]
 
     return render_template("index.html",
                            materiais=materiais,
@@ -526,14 +576,32 @@ def autocomplete():
     if not termo:
         return jsonify([])
 
+    cache_key = f"autocomplete_{termo}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+    
     dados = get_todos_dados()
-    sugestoes = [m["nome"] for m in dados['materiais'] if termo.lower() in m['nome'].lower()][:10]
+    termo_lower = termo.lower()
+    sugestoes = [m["nome"] for m in dados['materiais'] if termo_lower in m['nome'].lower()][:10]
+    
+    cache.set(cache_key, sugestoes, timeout=60)  # 1 minuto
     return jsonify(sugestoes)
 
 # ==================== LISTAR EMPRÉSTIMOS ====================
 @app.route("/emprestimos_ativos")
 @login_required
 def emprestimos_ativos():
+    cache_key = "emprestimos_ativos_list"
+    cached = cache.get(cache_key)
+    
+    if cached is not None:
+        emprestimos, total_materiais, total_emprestados = cached
+        return render_template("emprestimos_ativos.html",
+                               emprestimos=emprestimos,
+                               total_materiais=total_materiais,
+                               total_emprestados=total_emprestados)
+    
     dados = get_todos_dados()
     total_materiais = dados['total_materiais']
     
@@ -547,6 +615,8 @@ def emprestimos_ativos():
             emp["usuario_nome"] = emp["usuarios"]["nome"]
     
     total_emprestados = len(emprestimos)
+    
+    cache.set(cache_key, (emprestimos, total_materiais, total_emprestados), timeout=30)  # 30 segundos
 
     return render_template("emprestimos_ativos.html",
                            emprestimos=emprestimos,
@@ -557,6 +627,13 @@ def emprestimos_ativos():
 @app.route("/reservas")
 @login_required
 def reservas():
+    cache_key = "reservas_list"
+    cached = cache.get(cache_key)
+    
+    if cached is not None:
+        reservas_list, total_reservas = cached
+        return render_template("reservas.html", reservas=reservas_list, total_reservas=total_reservas)
+    
     reservas_list = supabase.table("reservas").select("*, materiais(*), usuarios!usuario_id(nome)")\
         .order("data_retirada")\
         .execute().data
@@ -566,13 +643,22 @@ def reservas():
             res["usuario_nome"] = res["usuarios"]["nome"]
     
     total_reservas = len(reservas_list)
+    
+    cache.set(cache_key, (reservas_list, total_reservas), timeout=30)  # 30 segundos
     return render_template("reservas.html", reservas=reservas_list, total_reservas=total_reservas)
 
 # ==================== ADMIN - USUÁRIOS ====================
 @app.route("/admin/usuarios")
 @admin_required
 def listar_usuarios():
+    cache_key = "usuarios_list"
+    cached = cache.get(cache_key)
+    
+    if cached is not None:
+        return render_template("admin_usuarios.html", usuarios=cached)
+    
     usuarios = supabase.table("usuarios").select("*").order("created_at").execute().data
+    cache.set(cache_key, usuarios, timeout=120)  # 2 minutos
     return render_template("admin_usuarios.html", usuarios=usuarios)
 
 @app.route("/admin/usuarios/criar", methods=["GET", "POST"])
@@ -597,6 +683,7 @@ def criar_usuario():
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }).execute()
         
+        cache.clear()
         flash(f"Usuário {nome} criado com sucesso!", "success")
         return redirect(url_for("listar_usuarios"))
     
@@ -620,6 +707,7 @@ def editar_usuario(usuario_id):
             dados_update["senha"] = senha
         
         supabase.table("usuarios").update(dados_update).eq("id", usuario_id).execute()
+        cache.clear()
         flash(f"Usuário {nome} atualizado com sucesso!", "success")
         return redirect(url_for("listar_usuarios"))
     
@@ -633,6 +721,7 @@ def excluir_usuario(usuario_id):
         return redirect(url_for("listar_usuarios"))
     
     supabase.table("usuarios").delete().eq("id", usuario_id).execute()
+    cache.clear()
     flash("Usuário excluído com sucesso!", "success")
     return redirect(url_for("listar_usuarios"))
 
@@ -644,6 +733,7 @@ def tornar_admin(usuario_id):
         return redirect(url_for("listar_usuarios"))
     
     supabase.table("usuarios").update({"role": "admin"}).eq("id", usuario_id).execute()
+    cache.clear()
     flash("Usuário promovido a administrador com sucesso!", "success")
     return redirect(url_for("listar_usuarios"))
 
@@ -655,6 +745,7 @@ def rebaixar_professor(usuario_id):
         return redirect(url_for("listar_usuarios"))
     
     supabase.table("usuarios").update({"role": "professor"}).eq("id", usuario_id).execute()
+    cache.clear()
     flash("Usuário rebaixado para professor.", "success")
     return redirect(url_for("listar_usuarios"))
 
@@ -662,6 +753,12 @@ def rebaixar_professor(usuario_id):
 @app.route("/admin/dashboard")
 @admin_required
 def admin_dashboard():
+    cache_key = "admin_dashboard"
+    cached = cache.get(cache_key)
+    
+    if cached is not None:
+        return render_template("admin_dashboard.html", **cached)
+    
     dados = get_todos_dados()
     total_materiais = dados['total_materiais']
     total_emprestimos = dados['total_emprestados']
@@ -694,16 +791,20 @@ def admin_dashboard():
         if emp.get("usuarios"):
             emp["usuario_nome"] = emp["usuarios"]["nome"]
     
-    return render_template("admin_dashboard.html",
-                         total_materiais=total_materiais,
-                         total_emprestimos=total_emprestimos,
-                         total_reservas=total_reservas,
-                         total_usuarios=total_usuarios,
-                         emprestimos_por_dia=emprestimos_por_dia,
-                         top_materiais=top_5,
-                         ultimos_emprestimos=ultimos_emprestimos)
+    dashboard_data = {
+        'total_materiais': total_materiais,
+        'total_emprestimos': total_emprestimos,
+        'total_reservas': total_reservas,
+        'total_usuarios': total_usuarios,
+        'emprestimos_por_dia': emprestimos_por_dia,
+        'top_materiais': top_5,
+        'ultimos_emprestimos': ultimos_emprestimos
+    }
+    
+    cache.set(cache_key, dashboard_data, timeout=60)  # 1 minuto
+    
+    return render_template("admin_dashboard.html", **dashboard_data)
 
-# ==================== OCORRÊNCIAS ====================
 # ==================== OCORRÊNCIAS ====================
 TIPOS_OCORRENCIA = [
     {"id": "disciplina", "nome": "Questões Disciplinares/Comportamentais", "icone": "⚠️"},
@@ -724,6 +825,20 @@ def listar_ocorrencias():
     filtro_aluno = request.args.get("aluno", "").strip()
     filtro_turma = request.args.get("turma", "").strip()
     
+    cache_key = f"ocorrencias_{session['usuario_id']}_{session['role']}_{filtro_aluno}_{filtro_turma}"
+    cached = cache.get(cache_key)
+    
+    if cached is not None:
+        ocorrencias, notificacoes_pendentes = cached
+        return render_template("ocorrencias.html", 
+                             ocorrencias=ocorrencias, 
+                             filtro_aluno=filtro_aluno,
+                             filtro_turma=filtro_turma,
+                             turmas_manha=TURMAS_MANHA,
+                             turmas_tarde=TURMAS_TARDE,
+                             notificacoes_pendentes=notificacoes_pendentes,
+                             tipos_map={t["id"]: t for t in TIPOS_OCORRENCIA})
+    
     if session['role'] == 'admin':
         query = supabase.table("ocorrencias").select("*")
     else:
@@ -738,6 +853,8 @@ def listar_ocorrencias():
     ocorrencias = query.order("data_ocorrencia", desc=True).order("created_at", desc=True).execute().data
     
     notificacoes_pendentes = sum(1 for o in ocorrencias if o.get("notificar_pais"))
+    
+    cache.set(cache_key, (ocorrencias, notificacoes_pendentes), timeout=60)  # 1 minuto
     
     tipos_map = {t["id"]: t for t in TIPOS_OCORRENCIA}
     
@@ -765,7 +882,6 @@ def nova_ocorrencia():
             flash("Nome do aluno é obrigatório.", "error")
             return redirect(url_for("nova_ocorrencia"))
         
-        # Se for "outros" e tiver descrição, usa a descrição
         if tipo_ocorrencia == "outros" and descricao_personalizada:
             ocorrencia_text = descricao_personalizada
         else:
@@ -864,6 +980,7 @@ def visualizar_ocorrencia(ocorrencia_id):
     
     if session['role'] == 'admin' and not ocorrencia.get("visualizada"):
         supabase.table("ocorrencias").update({"visualizada": True}).eq("id", ocorrencia_id).execute()
+        cache.clear()
     
     tipos_map = {t["id"]: t for t in TIPOS_OCORRENCIA}
     
@@ -896,6 +1013,7 @@ def marcar_visualizada(ocorrencia_id):
         return jsonify({"error": "Acesso negado"}), 403
     
     supabase.table("ocorrencias").update({"visualizada": True}).eq("id", ocorrencia_id).execute()
+    cache.clear()
     return jsonify({"success": True})
 
 @app.route("/ocorrencias/marcar_todas_visualizadas", methods=["POST"])
@@ -905,6 +1023,7 @@ def marcar_todas_visualizadas():
         return jsonify({"error": "Acesso negado"}), 403
     
     supabase.table("ocorrencias").update({"visualizada": True}).eq("visualizada", False).execute()
+    cache.clear()
     return jsonify({"success": True})
 
 # ==================== PROCESSAR RESERVAS ====================
@@ -953,14 +1072,20 @@ def processar_reservas():
 # ==================== CONTEXT PROCESSOR GLOBAL ====================
 @app.context_processor
 def inject_global_variables():
-    """Injeta variáveis globais em todos os templates"""
+    """Injeta variáveis globais em todos os templates com cache"""
     total_nao_visualizadas = 0
     if 'usuario_id' in session and session.get('role') == 'admin':
-        try:
-            nao_visualizadas = supabase.table("ocorrencias").select("id").eq("visualizada", False).execute().data
-            total_nao_visualizadas = len(nao_visualizadas)
-        except:
-            total_nao_visualizadas = 0
+        cache_key = "total_nao_visualizadas"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            total_nao_visualizadas = cached
+        else:
+            try:
+                nao_visualizadas = supabase.table("ocorrencias").select("id", count="exact").eq("visualizada", False).execute()
+                total_nao_visualizadas = nao_visualizadas.count or 0
+                cache.set(cache_key, total_nao_visualizadas, timeout=60)  # 1 minuto
+            except:
+                total_nao_visualizadas = 0
     return dict(total_nao_visualizadas=total_nao_visualizadas)
 
 # ==================== PDF ====================
@@ -1067,7 +1192,7 @@ def pdf_por_turma(turma):
             Paragraph(notificar, normal_style)
         ])
     
-    # Larguras das colunas (data maior para não quebrar)
+    # Larguras das colunas
     col_widths = [2.2*cm, 3*cm, 5.3*cm, 4*cm, 2.2*cm]
     
     table = Table(data, colWidths=col_widths, repeatRows=1)
