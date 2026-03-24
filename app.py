@@ -91,13 +91,12 @@ def cron_required(f):
 def pode_editar_reserva(reserva_id, usuario_id, role):
     if role == 'admin':
         return True
-    # Cache para verificação de permissão (curto prazo)
     cache_key = f"reserva_owner_{reserva_id}"
     owner = cache.get(cache_key)
     if owner is None:
         reserva = supabase.table("reservas").select("usuario_id").eq("id", reserva_id).single().execute().data
         owner = reserva.get("usuario_id") if reserva else None
-        cache.set(cache_key, owner, timeout=60)  # 1 minuto
+        cache.set(cache_key, owner, timeout=60)
     return owner == usuario_id
 
 def pode_devolver_emprestimo(emprestimo_id, usuario_id, role):
@@ -127,27 +126,44 @@ def get_turno_by_turma(turma):
 # ==================== FUNÇÕES DE PROCESSAMENTO AUTOMÁTICO ====================
 def processar_reservas_auto():
     """
-    Processa automaticamente todas as reservas que deveriam ser retiradas hoje ou antes.
-    Esta função é chamada automaticamente quando alguém acessa o sistema.
+    Processa automaticamente:
+    1. Devoluções vencidas (marca como devolvido automaticamente)
+    2. Reservas que deveriam ser retiradas hoje
     """
     try:
         hoje = datetime.now().strftime("%Y-%m-%d")
-        processadas = 0
+        processadas_reservas = 0
         adiadas = 0
+        devolvidas_auto = 0
         erros = 0
         
-        # Buscar reservas com data de retirada <= hoje
+        # ========== 1. PROCESSAR DEVOLUÇÕES VENCIDAS ==========
+        # Buscar empréstimos ativos com data de devolução prevista < hoje
+        emprestimos_vencidos = supabase.table("emprestimos")\
+            .select("*")\
+            .is_("data_devolucao_real", "null")\
+            .lt("data_devolucao_prevista", hoje)\
+            .execute().data
+        
+        for emprestimo in emprestimos_vencidos:
+            try:
+                supabase.table("emprestimos").update({
+                    "data_devolucao_real": hoje,
+                    "observacao": "Devolução automática por vencimento"
+                }).eq("id", emprestimo["id"]).execute()
+                devolvidas_auto += 1
+            except Exception as e:
+                erros += 1
+                print(f"Erro ao processar devolução automática {emprestimo.get('id')}: {str(e)}")
+        
+        # ========== 2. PROCESSAR RESERVAS ==========
         reservas = supabase.table("reservas")\
             .select("*")\
             .lte("data_retirada", hoje)\
             .execute().data
         
-        if not reservas:
-            return {"success": True, "processadas": 0, "adiadas": 0, "mensagem": "Nenhuma reserva para processar"}
-        
         for reserva in reservas:
             try:
-                # Verificar disponibilidade
                 disponivel = get_disponibilidade_por_horario(
                     reserva["material_id"], 
                     reserva["data_retirada"], 
@@ -174,7 +190,7 @@ def processar_reservas_auto():
                     }).execute()
                     
                     supabase.table("reservas").delete().eq("id", reserva["id"]).execute()
-                    processadas += 1
+                    processadas_reservas += 1
                 else:
                     # Adiar para amanhã
                     amanha = (datetime.strptime(reserva["data_retirada"], "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -186,18 +202,20 @@ def processar_reservas_auto():
                 print(f"Erro ao processar reserva {reserva.get('id')}: {str(e)}")
         
         # Limpar cache após processar
-        cache.clear()
+        if devolvidas_auto > 0 or processadas_reservas > 0 or adiadas > 0:
+            cache.clear()
         
         # Log do resultado
-        resultado = f"Processamento automático - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Convertidas: {processadas}, Adiadas: {adiadas}, Erros: {erros}"
+        resultado = f"Processamento automático - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Devoluções: {devolvidas_auto}, Reservas convertidas: {processadas_reservas}, Adiadas: {adiadas}, Erros: {erros}"
         print(resultado)
         
         return {
             "success": True,
-            "processadas": processadas,
+            "devolvidas_auto": devolvidas_auto,
+            "processadas": processadas_reservas,
             "adiadas": adiadas,
             "erros": erros,
-            "mensagem": f"Processadas: {processadas}, Adiadas: {adiadas}, Erros: {erros}"
+            "mensagem": f"Devoluções automáticas: {devolvidas_auto} | Reservas convertidas: {processadas_reservas} | Adiadas: {adiadas}"
         }
         
     except Exception as e:
@@ -214,23 +232,19 @@ def get_todos_dados():
     
     hoje = datetime.now().strftime("%Y-%m-%d")
     
-    # Consultas paralelas otimizadas (usando select específico)
     materiais = supabase.table("materiais").select("id,nome,categoria,quantidade_total,especificacoes,data_aquisicao,created_by").execute().data
     
-    # Buscar empréstimos ativos de hoje em uma única consulta
     emprestimos = supabase.table("emprestimos")\
         .select("material_id, turno, horario, quantidade_emprestada, data_emprestimo_data")\
         .is_("data_devolucao_real", "null")\
         .eq("data_emprestimo_data", hoje)\
         .execute().data
     
-    # Buscar reservas de hoje
     reservas = supabase.table("reservas")\
         .select("material_id, turno, horario, quantidade_reservada, data_retirada")\
         .eq("data_retirada", hoje)\
         .execute().data
     
-    # Processar uso em memória
     uso = {}
     
     for e in emprestimos:
@@ -241,7 +255,6 @@ def get_todos_dados():
         key = f"{r['material_id']}_{r['turno']}_{r['horario']}"
         uso[key] = uso.get(key, 0) + r.get("quantidade_reservada", 1)
     
-    # Processar cada material
     for material in materiais:
         total = material["quantidade_total"]
         horarios_manha = []
@@ -269,13 +282,8 @@ def get_todos_dados():
         material["disponiveis_tarde"] = total_disponivel_tarde
         material["disponiveis"] = total_disponivel_manha + total_disponivel_tarde
     
-    # Contagens otimizadas
     total_materiais = sum(m["quantidade_total"] for m in materiais)
-    
-    # Contagem total de empréstimos ativos (não só de hoje)
     total_emprestados = supabase.table("emprestimos").select("id", count="exact").is_("data_devolucao_real", "null").execute().count or 0
-    
-    # Contagem total de reservas
     total_reservados = supabase.table("reservas").select("id", count="exact").execute().count or 0
     
     resultado = {
@@ -301,7 +309,6 @@ def get_disponibilidade_por_horario(material_id, data, turno, horario):
     
     total = material["quantidade_total"]
     
-    # Buscar empréstimos e reservas
     emprestimos = supabase.table("emprestimos")\
         .select("quantidade_emprestada")\
         .eq("material_id", material_id)\
@@ -323,7 +330,7 @@ def get_disponibilidade_por_horario(material_id, data, turno, horario):
     total_reservado = sum(r.get("quantidade_reservada", 1) for r in reservas)
     disponivel = total - total_emprestado - total_reservado
     
-    cache.set(cache_key, disponivel, timeout=60)  # 1 minuto
+    cache.set(cache_key, disponivel, timeout=60)
     return disponivel
 
 # ==================== ROTAS DE AUTENTICAÇÃO ====================
@@ -401,13 +408,12 @@ def cadastrar_professor():
 @login_required
 def index():
     try:
-        # Processar reservas automaticamente (apenas uma vez por dia)
         hoje = datetime.now().strftime("%Y-%m-%d")
         cache_key_processado = f"processado_auto_{hoje}"
         
         if not cache.get(cache_key_processado):
             resultado = processar_reservas_auto()
-            if resultado["success"] and (resultado["processadas"] > 0 or resultado["adiadas"] > 0):
+            if resultado["success"] and (resultado["devolvidas_auto"] > 0 or resultado["processadas"] > 0 or resultado["adiadas"] > 0):
                 flash(f"📅 Processamento automático: {resultado['mensagem']}", "info")
             cache.set(cache_key_processado, True, timeout=86400)  # 24 horas
         
@@ -430,10 +436,7 @@ def index():
 @app.route("/api/cron/processar-reservas", methods=["GET", "POST"])
 @cron_required
 def cron_processar_reservas():
-    """
-    Endpoint para ser chamado por GitHub Actions ou outro cron job.
-    Exemplo: curl -H "X-Cron-Secret: sua_chave_secreta" https://seu-app.vercel.app/api/cron/processar-reservas
-    """
+    """Endpoint para ser chamado por GitHub Actions"""
     try:
         resultado = processar_reservas_auto()
         return jsonify(resultado), 200
@@ -448,16 +451,16 @@ def processar_reservas_manual():
     try:
         resultado = processar_reservas_auto()
         if resultado["success"]:
-            if resultado["processadas"] > 0 or resultado["adiadas"] > 0:
+            if resultado["devolvidas_auto"] > 0 or resultado["processadas"] > 0 or resultado["adiadas"] > 0:
                 flash(f"✅ {resultado['mensagem']}", "success")
             else:
-                flash("📌 Nenhuma reserva pendente para processar.", "info")
+                flash("📌 Nenhuma reserva ou devolução pendente para processar.", "info")
         else:
-            flash(f"❌ Erro ao processar reservas: {resultado.get('error', 'Erro desconhecido')}", "error")
+            flash(f"❌ Erro ao processar: {resultado.get('error', 'Erro desconhecido')}", "error")
         
         cache.clear()
     except Exception as e:
-        flash(f"Erro ao processar reservas: {str(e)}", "error")
+        flash(f"Erro ao processar: {str(e)}", "error")
     
     return redirect(url_for("index"))
 
@@ -721,13 +724,14 @@ def autocomplete():
     termo_lower = termo.lower()
     sugestoes = [m["nome"] for m in dados['materiais'] if termo_lower in m['nome'].lower()][:10]
     
-    cache.set(cache_key, sugestoes, timeout=60)  # 1 minuto
+    cache.set(cache_key, sugestoes, timeout=60)
     return jsonify(sugestoes)
 
-# ==================== LISTAR EMPRÉSTIMOS ====================
+# ==================== LISTAR EMPRÉSTIMOS ATIVOS ====================
 @app.route("/emprestimos_ativos")
 @login_required
 def emprestimos_ativos():
+    """Lista apenas empréstimos que ainda não foram devolvidos"""
     cache_key = "emprestimos_ativos_list"
     cached = cache.get(cache_key)
     
@@ -741,6 +745,7 @@ def emprestimos_ativos():
     dados = get_todos_dados()
     total_materiais = dados['total_materiais']
     
+    # Só busca empréstimos com data_devolucao_real = null (não devolvidos)
     emprestimos = supabase.table("emprestimos").select("*, materiais(*), usuarios!usuario_id(nome)")\
         .is_("data_devolucao_real", "null")\
         .order("data_emprestimo")\
@@ -749,15 +754,53 @@ def emprestimos_ativos():
     for emp in emprestimos:
         if emp.get("usuarios"):
             emp["usuario_nome"] = emp["usuarios"]["nome"]
+        # Adicionar informação de atraso
+        hoje = datetime.now().strftime("%Y-%m-%d")
+        if emp.get("data_devolucao_prevista") and emp["data_devolucao_prevista"] < hoje:
+            emp["atrasado"] = True
+        else:
+            emp["atrasado"] = False
     
     total_emprestados = len(emprestimos)
     
-    cache.set(cache_key, (emprestimos, total_materiais, total_emprestados), timeout=30)  # 30 segundos
+    cache.set(cache_key, (emprestimos, total_materiais, total_emprestados), timeout=30)
 
     return render_template("emprestimos_ativos.html",
                            emprestimos=emprestimos,
                            total_materiais=total_materiais,
                            total_emprestados=total_emprestados)
+
+# ==================== LISTAR HISTÓRICO DE EMPRÉSTIMOS ====================
+@app.route("/historico_emprestimos")
+@login_required
+def historico_emprestimos():
+    """Lista histórico de todos os empréstimos (devolvidos e não devolvidos)"""
+    cache_key = "historico_emprestimos_list"
+    cached = cache.get(cache_key)
+    
+    if cached is not None:
+        emprestimos, total_emprestimos = cached
+        return render_template("historico_emprestimos.html",
+                               emprestimos=emprestimos,
+                               total_emprestimos=total_emprestimos)
+    
+    # Busca TODOS os empréstimos (incluindo devolvidos)
+    emprestimos = supabase.table("emprestimos").select("*, materiais(*), usuarios!usuario_id(nome)")\
+        .order("data_emprestimo", desc=True)\
+        .limit(200)\
+        .execute().data
+    
+    for emp in emprestimos:
+        if emp.get("usuarios"):
+            emp["usuario_nome"] = emp["usuarios"]["nome"]
+    
+    total_emprestimos = len(emprestimos)
+    
+    cache.set(cache_key, (emprestimos, total_emprestimos), timeout=60)
+    
+    return render_template("historico_emprestimos.html",
+                           emprestimos=emprestimos,
+                           total_emprestimos=total_emprestimos)
 
 # ==================== LISTAR RESERVAS ====================
 @app.route("/reservas")
@@ -780,7 +823,7 @@ def reservas():
     
     total_reservas = len(reservas_list)
     
-    cache.set(cache_key, (reservas_list, total_reservas), timeout=30)  # 30 segundos
+    cache.set(cache_key, (reservas_list, total_reservas), timeout=30)
     return render_template("reservas.html", reservas=reservas_list, total_reservas=total_reservas)
 
 # ==================== ADMIN - USUÁRIOS ====================
@@ -794,7 +837,7 @@ def listar_usuarios():
         return render_template("admin_usuarios.html", usuarios=cached)
     
     usuarios = supabase.table("usuarios").select("*").order("created_at").execute().data
-    cache.set(cache_key, usuarios, timeout=120)  # 2 minutos
+    cache.set(cache_key, usuarios, timeout=120)
     return render_template("admin_usuarios.html", usuarios=usuarios)
 
 @app.route("/admin/usuarios/criar", methods=["GET", "POST"])
@@ -937,7 +980,7 @@ def admin_dashboard():
         'ultimos_emprestimos': ultimos_emprestimos
     }
     
-    cache.set(cache_key, dashboard_data, timeout=60)  # 1 minuto
+    cache.set(cache_key, dashboard_data, timeout=60)
     
     return render_template("admin_dashboard.html", **dashboard_data)
 
@@ -956,8 +999,6 @@ TIPOS_OCORRENCIA = [
 @app.route("/ocorrencias")
 @login_required
 def listar_ocorrencias():
-    """Lista ocorrências com filtros - professores veem as próprias, admin vê todas"""
-    
     filtro_aluno = request.args.get("aluno", "").strip()
     filtro_turma = request.args.get("turma", "").strip()
     
@@ -990,7 +1031,7 @@ def listar_ocorrencias():
     
     notificacoes_pendentes = sum(1 for o in ocorrencias if o.get("notificar_pais"))
     
-    cache.set(cache_key, (ocorrencias, notificacoes_pendentes), timeout=60)  # 1 minuto
+    cache.set(cache_key, (ocorrencias, notificacoes_pendentes), timeout=60)
     
     tipos_map = {t["id"]: t for t in TIPOS_OCORRENCIA}
     
@@ -1103,7 +1144,6 @@ def editar_ocorrencia(ocorrencia_id):
 @app.route("/ocorrencias/visualizar/<int:ocorrencia_id>")
 @login_required
 def visualizar_ocorrencia(ocorrencia_id):
-    """Página expandida para visualizar a ocorrência completa"""
     ocorrencia = supabase.table("ocorrencias").select("*").eq("id", ocorrencia_id).single().execute().data
     
     if not ocorrencia:
@@ -1165,7 +1205,6 @@ def marcar_todas_visualizadas():
 # ==================== CONTEXT PROCESSOR GLOBAL ====================
 @app.context_processor
 def inject_global_variables():
-    """Injeta variáveis globais em todos os templates com cache"""
     total_nao_visualizadas = 0
     if 'usuario_id' in session and session.get('role') == 'admin':
         cache_key = "total_nao_visualizadas"
@@ -1176,7 +1215,7 @@ def inject_global_variables():
             try:
                 nao_visualizadas = supabase.table("ocorrencias").select("id", count="exact").eq("visualizada", False).execute()
                 total_nao_visualizadas = nao_visualizadas.count or 0
-                cache.set(cache_key, total_nao_visualizadas, timeout=60)  # 1 minuto
+                cache.set(cache_key, total_nao_visualizadas, timeout=60)
             except:
                 total_nao_visualizadas = 0
     return dict(total_nao_visualizadas=total_nao_visualizadas)
@@ -1193,7 +1232,6 @@ import urllib.parse
 from collections import defaultdict
 
 def formatar_data(data_str):
-    """Formata data de YYYY-MM-DD para DD/MM/YYYY"""
     if not data_str:
         return "-"
     try:
@@ -1209,7 +1247,6 @@ def formatar_data(data_str):
 @app.route("/ocorrencias/pdf/turma/<turma>")
 @login_required
 def pdf_por_turma(turma):
-    """Gera PDF com ocorrências de uma turma específica"""
     if session['role'] != 'admin':
         flash("Acesso negado. Apenas administradores podem gerar PDFs.", "error")
         return redirect(url_for("listar_ocorrencias"))
@@ -1245,19 +1282,16 @@ def pdf_por_turma(turma):
     
     elements = []
     
-    # Cabeçalho
     elements.append(Paragraph(f"Relatório de Ocorrências", title_style))
     elements.append(Paragraph(f"Turma: {turma}", subtitle_style))
     elements.append(Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}", subtitle_style))
     elements.append(Spacer(1, 10))
     
-    # Resumo
     alunos_unicos = len(set(o["nome_aluno"] for o in ocorrencias))
     resumo_texto = f"Total de ocorrências: {len(ocorrencias)} | Alunos envolvidos: {alunos_unicos} | Notificações: {sum(1 for o in ocorrencias if o.get('notificar_pais'))}"
     elements.append(Paragraph(resumo_texto, normal_style))
     elements.append(Spacer(1, 15))
     
-    # Tabela principal
     data = []
     data.append([Paragraph("<b>Data</b>", normal_style),
                  Paragraph("<b>Aluno</b>", normal_style),
@@ -1285,7 +1319,6 @@ def pdf_por_turma(turma):
             Paragraph(notificar, normal_style)
         ])
     
-    # Larguras das colunas
     col_widths = [2.2*cm, 3*cm, 5.3*cm, 4*cm, 2.2*cm]
     
     table = Table(data, colWidths=col_widths, repeatRows=1)
@@ -1306,7 +1339,6 @@ def pdf_por_turma(turma):
     elements.append(table)
     elements.append(Spacer(1, 15))
     
-    # Legenda
     legend_style = ParagraphStyle('Legend', parent=styles['Normal'], fontSize=8, textColor=colors.grey)
     elements.append(Paragraph("✓ Sim = Notificar os pais | ✗ Não = Não notificar", legend_style))
     elements.append(Spacer(1, 20))
@@ -1325,7 +1357,6 @@ def pdf_por_turma(turma):
 @app.route("/ocorrencias/pdf/aluno/<nome_aluno>")
 @login_required
 def pdf_por_aluno(nome_aluno):
-    """Gera PDF com ocorrências de um aluno específico"""
     if session['role'] != 'admin':
         flash("Acesso negado. Apenas administradores podem gerar PDFs.", "error")
         return redirect(url_for("listar_ocorrencias"))
@@ -1372,7 +1403,6 @@ def pdf_por_aluno(nome_aluno):
     elements.append(Paragraph(resumo_texto, normal_style))
     elements.append(Spacer(1, 15))
     
-    # Tabela
     data = []
     data.append([Paragraph("<b>Data</b>", normal_style),
                  Paragraph("<b>Ocorrência</b>", normal_style),
@@ -1434,12 +1464,10 @@ def pdf_por_aluno(nome_aluno):
 @app.route("/ocorrencias/pdf/todas")
 @login_required
 def pdf_todas_ocorrencias():
-    """Gera PDF com todas as ocorrências - organizado por turma"""
     if session['role'] != 'admin':
         flash("Acesso negado. Apenas administradores podem gerar PDFs.", "error")
         return redirect(url_for("listar_ocorrencias"))
     
-    # Agrupar por turma
     todas = supabase.table("ocorrencias")\
         .select("*")\
         .order("turma")\
@@ -1451,7 +1479,6 @@ def pdf_todas_ocorrencias():
         flash("Nenhuma ocorrência encontrada.", "warning")
         return redirect(url_for("listar_ocorrencias"))
     
-    # Agrupar por turma
     por_turma = defaultdict(list)
     for o in todas:
         por_turma[o["turma"]].append(o)
@@ -1491,7 +1518,6 @@ def pdf_todas_ocorrencias():
     for turma in sorted(por_turma.keys()):
         elements.append(Paragraph(f"Turma {turma}", turma_style))
         
-        # Tabela por turma
         data = []
         data.append([Paragraph("<b>Data</b>", normal_style),
                      Paragraph("<b>Aluno</b>", normal_style),

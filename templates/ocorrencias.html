@@ -121,23 +121,30 @@
                 </form>
             </div>
         </div>
-        
-        <div style="margin: 20px 0; text-align: center; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+
+        <div
+            style="margin: 20px 0; text-align: center; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
             <a class="btn" href="{{ url_for('nova_ocorrencia') }}">➕ Nova Ocorrência</a>
             {% if session.role == 'admin' and total_nao_visualizadas > 0 %}
-            <a href="#" class="btn" id="marcarTodasBtn" style="background: var(--warning);">✅ Marcar todas como lidas</a>
+            <a href="#" class="btn" id="marcarTodasBtn" style="background: var(--warning);">✅ Marcar todas como
+                lidas</a>
             {% endif %}
         </div>
 
-        <!-- Seletor de PDF por Turma -->
-        <div style="background: linear-gradient(135deg, #e0f2f1 0%, #b2dfdb 100%); padding: 20px; border-radius: 16px; margin: 20px 0;">
+        <!-- Seletor de PDF por Turma - APENAS ADMIN -->
+        {% if session.role == 'admin' %}
+        <div
+            style="background: linear-gradient(135deg, #e0f2f1 0%, #b2dfdb 100%); padding: 20px; border-radius: 16px; margin: 20px 0;">
             <h3 style="margin: 0 0 15px 0; color: #004d40; display: flex; align-items: center; gap: 10px;">
                 <span>📄</span> Gerar Relatório PDF
             </h3>
             <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
                 <div style="flex: 1; min-width: 200px;">
-                    <label style="display: block; margin-bottom: 5px; font-size: 13px; color: #004d40; font-weight: 500;">Selecione a Turma:</label>
-                    <select id="turmaSelect" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #ddd; font-size: 14px;">
+                    <label
+                        style="display: block; margin-bottom: 5px; font-size: 13px; color: #004d40; font-weight: 500;">Selecione
+                        a Turma:</label>
+                    <select id="turmaSelect"
+                        style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #ddd; font-size: 14px;">
                         <option value="">-- Selecione uma turma --</option>
                         <optgroup label="🌅 Manhã">
                             {% for turma in turmas_manha %}
@@ -152,11 +159,14 @@
                     </select>
                 </div>
                 <div style="display: flex; gap: 10px;">
-                    <a id="pdfBtnTurma" href="#" class="btn" target="_blank" style="background: var(--danger); padding: 10px 20px;">📄 Gerar PDF da Turma</a>
-                    <a href="{{ url_for('pdf_todas_ocorrencias') }}" target="_blank" class="btn" style="background: var(--danger); padding: 10px 20px;">📄 Gerar PDF de Todas</a>
+                    <a id="pdfBtnTurma" href="#" class="btn" target="_blank"
+                        style="background: var(--danger); padding: 10px 20px;">📄 Gerar PDF da Turma</a>
+                    <a href="{{ url_for('pdf_todas_ocorrencias') }}" target="_blank" class="btn"
+                        style="background: var(--danger); padding: 10px 20px;">📄 Gerar PDF de Todas</a>
                 </div>
             </div>
         </div>
+        {% endif %}
 
         <!-- INFO DE FILTROS ATIVOS -->
         {% if filtro_aluno or filtro_turma %}
@@ -179,7 +189,11 @@
             {% for ocorrencia in ocorrencias %}
             <li class="card-ocorrencia {% if session.role == 'admin' and not ocorrencia.visualizada %}ocorrencia-nova{% endif %}"
                 onclick="window.location.href='{{ url_for('visualizar_ocorrencia', ocorrencia_id=ocorrencia.id) }}'">
-                <h3>📅 {{ ocorrencia.data_ocorrencia }} - {{ ocorrencia.nome_aluno }} ({{ ocorrencia.turma }})</h3>
+                <h3>
+                    📅 {{ ocorrencia.data_ocorrencia }} -
+                    {{ ocorrencia.nome_aluno[:25] }}{% if ocorrencia.nome_aluno|length > 20 %}...{% endif %}
+                    ({{ ocorrencia.turma }})
+                </h3>
                 <p><strong>👨‍🏫 Professor:</strong> {{ ocorrencia.usuario_nome }}</p>
                 <p>
                     <strong>📝 Ocorrência:</strong>
@@ -187,15 +201,12 @@
                     {% if tipo_info %}
                     <span class="tipo-icone-card">{{ tipo_info.icone }}</span>
                     {% endif %}
-                    {{ ocorrencia.ocorrencia[:80] }}{% if ocorrencia.ocorrencia|length > 80 %}...{% endif %}
+                    {{ ocorrencia.ocorrencia[:38] }}{% if ocorrencia.ocorrencia|length > 40 %}...{% endif %}
                 </p>
-                {% if ocorrencia.descricao_personalizada %}
-                <p><strong>📌 Detalhes:</strong> {{ ocorrencia.descricao_personalizada[:60] }}{% if
-                    ocorrencia.descricao_personalizada|length > 60 %}...{% endif %}</p>
-                {% endif %}
+
                 {% if ocorrencia.observacao %}
-                <p><strong>📌 Observação:</strong> {{ ocorrencia.observacao[:60] }}{% if ocorrencia.observacao|length >
-                    60 %}...{% endif %}</p>
+                <p><strong>📌 Observação:</strong> {{ ocorrencia.observacao[:32] }}{% if ocorrencia.observacao|length >
+                    100 %}...{% endif %}</p>
                 {% endif %}
                 <p><strong>📢 Notificar pais:</strong> {% if ocorrencia.notificar_pais %}✅ Sim{% else %}❌ Não{% endif %}
                 </p>
@@ -279,7 +290,7 @@
         // Seletor de PDF
         const turmaSelect = document.getElementById('turmaSelect');
         const pdfBtnTurma = document.getElementById('pdfBtnTurma');
-        
+
         function updatePdfLink() {
             const turma = turmaSelect.value;
             if (turma) {
@@ -292,7 +303,7 @@
                 pdfBtnTurma.style.pointerEvents = 'none';
             }
         }
-        
+
         if (turmaSelect) {
             turmaSelect.addEventListener('change', updatePdfLink);
             updatePdfLink();

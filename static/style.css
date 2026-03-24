@@ -1530,3 +1530,13 @@ span.indisponivel {
         grid-template-columns: 1fr;
     }
 }
+
+
+/* ==================== CORREÇÃO DE TEXTO ESTOURANDO ==================== */
+
+li p,
+.detalhe-valor {
+    word-break: break-word;        /* quebra palavras grandes */
+    overflow-wrap: break-word;     /* padrão moderno */
+    white-space: normal;           /* garante quebra de linha */
+}
