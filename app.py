@@ -963,9 +963,370 @@ def inject_global_variables():
             total_nao_visualizadas = 0
     return dict(total_nao_visualizadas=total_nao_visualizadas)
 
-if __name__ == "__main__":
-    app.run(debug=True)
+# ==================== PDF ====================
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from io import BytesIO
+from flask import make_response
+import urllib.parse
+from collections import defaultdict
 
+def formatar_data(data_str):
+    """Formata data de YYYY-MM-DD para DD/MM/YYYY"""
+    if not data_str:
+        return "-"
+    try:
+        if '/' in data_str:
+            return data_str
+        partes = data_str.split('-')
+        if len(partes) == 3:
+            return f"{partes[2]}/{partes[1]}/{partes[0]}"
+        return data_str
+    except:
+        return data_str
+
+@app.route("/ocorrencias/pdf/turma/<turma>")
+@login_required
+def pdf_por_turma(turma):
+    """Gera PDF com ocorrências de uma turma específica"""
+    if session['role'] != 'admin':
+        flash("Acesso negado. Apenas administradores podem gerar PDFs.", "error")
+        return redirect(url_for("listar_ocorrencias"))
+    
+    ocorrencias = supabase.table("ocorrencias")\
+        .select("*")\
+        .eq("turma", turma)\
+        .order("nome_aluno")\
+        .order("data_ocorrencia", desc=True)\
+        .execute().data
+    
+    if not ocorrencias:
+        flash(f"Nenhuma ocorrência encontrada para a turma {turma}.", "warning")
+        return redirect(url_for("listar_ocorrencias"))
+    
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, 
+                           rightMargin=1.2*cm, leftMargin=1.2*cm, 
+                           topMargin=1.5*cm, bottomMargin=1.5*cm)
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], 
+                                  fontSize=18, alignment=1, 
+                                  textColor=colors.HexColor('#00796b'),
+                                  spaceAfter=12)
+    subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], 
+                                     fontSize=9, alignment=1, 
+                                     textColor=colors.black, spaceAfter=15)
+    normal_style = ParagraphStyle('Normal', parent=styles['Normal'], fontSize=9, leading=11)
+    data_style = ParagraphStyle('DataStyle', parent=styles['Normal'], 
+                                 fontSize=9, leading=11, alignment=0, 
+                                 wordWrap='CJK', allowWidows=0, allowOrphans=0)
+    
+    elements = []
+    
+    # Cabeçalho
+    elements.append(Paragraph(f"Relatório de Ocorrências", title_style))
+    elements.append(Paragraph(f"Turma: {turma}", subtitle_style))
+    elements.append(Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}", subtitle_style))
+    elements.append(Spacer(1, 10))
+    
+    # Resumo
+    alunos_unicos = len(set(o["nome_aluno"] for o in ocorrencias))
+    resumo_texto = f"Total de ocorrências: {len(ocorrencias)} | Alunos envolvidos: {alunos_unicos} | Notificações: {sum(1 for o in ocorrencias if o.get('notificar_pais'))}"
+    elements.append(Paragraph(resumo_texto, normal_style))
+    elements.append(Spacer(1, 15))
+    
+    # Tabela principal
+    data = []
+    data.append([Paragraph("<b>Data</b>", normal_style),
+                 Paragraph("<b>Aluno</b>", normal_style),
+                 Paragraph("<b>Ocorrência</b>", normal_style),
+                 Paragraph("<b>Observação</b>", normal_style),
+                 Paragraph("<b>Notificar Pais</b>", normal_style)])
+    
+    for o in ocorrencias:
+        ocorrencia_text = o.get("ocorrencia", "")
+        if len(ocorrencia_text) > 120:
+            ocorrencia_text = ocorrencia_text[:117] + "..."
+        
+        observacao_text = o.get("observacao", "") or "-"
+        if len(observacao_text) > 100:
+            observacao_text = observacao_text[:97] + "..."
+        
+        notificar = "✓ Sim" if o.get("notificar_pais") else "✗ Não"
+        data_formatada = formatar_data(o.get("data_ocorrencia", "-"))
+        
+        data.append([
+            Paragraph(data_formatada, data_style),
+            Paragraph(o.get("nome_aluno", "-"), normal_style),
+            Paragraph(ocorrencia_text, normal_style),
+            Paragraph(observacao_text, normal_style),
+            Paragraph(notificar, normal_style)
+        ])
+    
+    # Larguras das colunas (data maior para não quebrar)
+    col_widths = [2.2*cm, 3*cm, 5.3*cm, 4*cm, 2.2*cm]
+    
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#00796b')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('WORDWRAP', (0, 0), (-1, -1), 'CJK'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    
+    elements.append(table)
+    elements.append(Spacer(1, 15))
+    
+    # Legenda
+    legend_style = ParagraphStyle('Legend', parent=styles['Normal'], fontSize=8, textColor=colors.grey)
+    elements.append(Paragraph("✓ Sim = Notificar os pais | ✗ Não = Não notificar", legend_style))
+    elements.append(Spacer(1, 20))
+    elements.append(Paragraph("Documento gerado automaticamente pelo Sistema de Gestão de Materiais", legend_style))
+    
+    doc.build(elements)
+    pdf = buffer.getvalue()
+    buffer.close()
+    
+    response = make_response(pdf)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'inline; filename=ocorrencias_{turma}_{datetime.now().strftime("%Y%m%d")}.pdf'
+    
+    return response
+
+@app.route("/ocorrencias/pdf/aluno/<nome_aluno>")
+@login_required
+def pdf_por_aluno(nome_aluno):
+    """Gera PDF com ocorrências de um aluno específico"""
+    if session['role'] != 'admin':
+        flash("Acesso negado. Apenas administradores podem gerar PDFs.", "error")
+        return redirect(url_for("listar_ocorrencias"))
+    
+    nome_aluno = urllib.parse.unquote(nome_aluno)
+    
+    ocorrencias = supabase.table("ocorrencias")\
+        .select("*")\
+        .ilike("nome_aluno", f"%{nome_aluno}%")\
+        .order("data_ocorrencia", desc=True)\
+        .execute().data
+    
+    if not ocorrencias:
+        flash(f"Nenhuma ocorrência encontrada para o aluno {nome_aluno}.", "warning")
+        return redirect(url_for("listar_ocorrencias"))
+    
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, 
+                           rightMargin=1.2*cm, leftMargin=1.2*cm, 
+                           topMargin=1.5*cm, bottomMargin=1.5*cm)
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], 
+                                  fontSize=18, alignment=1, 
+                                  textColor=colors.HexColor('#00796b'),
+                                  spaceAfter=12)
+    subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], 
+                                     fontSize=9, alignment=1, 
+                                     textColor=colors.black, spaceAfter=15)
+    normal_style = ParagraphStyle('Normal', parent=styles['Normal'], fontSize=9, leading=11)
+    data_style = ParagraphStyle('DataStyle', parent=styles['Normal'], 
+                                 fontSize=9, leading=11, alignment=0, 
+                                 wordWrap='CJK', allowWidows=0, allowOrphans=0)
+    
+    elements = []
+    
+    elements.append(Paragraph(f"Relatório de Ocorrências", title_style))
+    elements.append(Paragraph(f"Aluno: {nome_aluno}", subtitle_style))
+    elements.append(Paragraph(f"Turma: {ocorrencias[0].get('turma', '-')}", subtitle_style))
+    elements.append(Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}", subtitle_style))
+    elements.append(Spacer(1, 10))
+    
+    resumo_texto = f"Total de ocorrências: {len(ocorrencias)} | Notificações: {sum(1 for o in ocorrencias if o.get('notificar_pais'))}"
+    elements.append(Paragraph(resumo_texto, normal_style))
+    elements.append(Spacer(1, 15))
+    
+    # Tabela
+    data = []
+    data.append([Paragraph("<b>Data</b>", normal_style),
+                 Paragraph("<b>Ocorrência</b>", normal_style),
+                 Paragraph("<b>Observação</b>", normal_style),
+                 Paragraph("<b>Notificar Pais</b>", normal_style)])
+    
+    for o in ocorrencias:
+        ocorrencia_text = o.get("ocorrencia", "")
+        if len(ocorrencia_text) > 120:
+            ocorrencia_text = ocorrencia_text[:117] + "..."
+        
+        observacao_text = o.get("observacao", "") or "-"
+        if len(observacao_text) > 100:
+            observacao_text = observacao_text[:97] + "..."
+        
+        notificar = "✓ Sim" if o.get("notificar_pais") else "✗ Não"
+        data_formatada = formatar_data(o.get("data_ocorrencia", "-"))
+        
+        data.append([
+            Paragraph(data_formatada, data_style),
+            Paragraph(ocorrencia_text, normal_style),
+            Paragraph(observacao_text, normal_style),
+            Paragraph(notificar, normal_style)
+        ])
+    
+    col_widths = [2.2*cm, 8*cm, 5.3*cm, 2.2*cm]
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#00796b')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('WORDWRAP', (0, 0), (-1, -1), 'CJK'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    
+    elements.append(table)
+    elements.append(Spacer(1, 15))
+    
+    legend_style = ParagraphStyle('Legend', parent=styles['Normal'], fontSize=8, textColor=colors.grey)
+    elements.append(Paragraph("✓ Sim = Notificar os pais | ✗ Não = Não notificar", legend_style))
+    elements.append(Spacer(1, 20))
+    elements.append(Paragraph("Documento gerado automaticamente pelo Sistema de Gestão de Materiais", legend_style))
+    
+    doc.build(elements)
+    pdf = buffer.getvalue()
+    buffer.close()
+    
+    response = make_response(pdf)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'inline; filename=ocorrencias_{nome_aluno}_{datetime.now().strftime("%Y%m%d")}.pdf'
+    
+    return response
+
+@app.route("/ocorrencias/pdf/todas")
+@login_required
+def pdf_todas_ocorrencias():
+    """Gera PDF com todas as ocorrências - organizado por turma"""
+    if session['role'] != 'admin':
+        flash("Acesso negado. Apenas administradores podem gerar PDFs.", "error")
+        return redirect(url_for("listar_ocorrencias"))
+    
+    # Agrupar por turma
+    todas = supabase.table("ocorrencias")\
+        .select("*")\
+        .order("turma")\
+        .order("nome_aluno")\
+        .order("data_ocorrencia", desc=True)\
+        .execute().data
+    
+    if not todas:
+        flash("Nenhuma ocorrência encontrada.", "warning")
+        return redirect(url_for("listar_ocorrencias"))
+    
+    # Agrupar por turma
+    por_turma = defaultdict(list)
+    for o in todas:
+        por_turma[o["turma"]].append(o)
+    
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, 
+                           rightMargin=1.2*cm, leftMargin=1.2*cm, 
+                           topMargin=1.5*cm, bottomMargin=1.5*cm)
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], 
+                                  fontSize=18, alignment=1, 
+                                  textColor=colors.HexColor('#00796b'),
+                                  spaceAfter=12)
+    subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], 
+                                     fontSize=9, alignment=1, 
+                                     textColor=colors.black, spaceAfter=15)
+    turma_style = ParagraphStyle('TurmaTitle', parent=styles['Heading2'], 
+                                  fontSize=14, textColor=colors.HexColor('#00796b'),
+                                  spaceAfter=10, spaceBefore=15)
+    normal_style = ParagraphStyle('Normal', parent=styles['Normal'], fontSize=9, leading=11)
+    data_style = ParagraphStyle('DataStyle', parent=styles['Normal'], 
+                                 fontSize=9, leading=11, alignment=0, 
+                                 wordWrap='CJK', allowWidows=0, allowOrphans=0)
+    
+    elements = []
+    
+    elements.append(Paragraph("Relatório Geral de Ocorrências", title_style))
+    elements.append(Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}", subtitle_style))
+    elements.append(Spacer(1, 10))
+    
+    total_alunos = len(set(o["nome_aluno"] for o in todas))
+    resumo_texto = f"Total de ocorrências: {len(todas)} | Turmas: {len(por_turma)} | Alunos envolvidos: {total_alunos}"
+    elements.append(Paragraph(resumo_texto, normal_style))
+    elements.append(Spacer(1, 20))
+    
+    for turma in sorted(por_turma.keys()):
+        elements.append(Paragraph(f"Turma {turma}", turma_style))
+        
+        # Tabela por turma
+        data = []
+        data.append([Paragraph("<b>Data</b>", normal_style),
+                     Paragraph("<b>Aluno</b>", normal_style),
+                     Paragraph("<b>Ocorrência</b>", normal_style),
+                     Paragraph("<b>Notificar Pais</b>", normal_style)])
+        
+        for o in por_turma[turma]:
+            ocorrencia_text = o.get("ocorrencia", "")
+            if len(ocorrencia_text) > 120:
+                ocorrencia_text = ocorrencia_text[:117] + "..."
+            
+            notificar = "✓ Sim" if o.get("notificar_pais") else "✗ Não"
+            data_formatada = formatar_data(o.get("data_ocorrencia", "-"))
+            
+            data.append([
+                Paragraph(data_formatada, data_style),
+                Paragraph(o.get("nome_aluno", "-"), normal_style),
+                Paragraph(ocorrencia_text, normal_style),
+                Paragraph(notificar, normal_style)
+            ])
+        
+        col_widths = [2.2*cm, 3*cm, 9.3*cm, 2.2*cm]
+        table = Table(data, colWidths=col_widths, repeatRows=1)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#00796b')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('WORDWRAP', (0, 0), (-1, -1), 'CJK'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        
+        elements.append(table)
+        elements.append(Spacer(1, 10))
+    
+    legend_style = ParagraphStyle('Legend', parent=styles['Normal'], fontSize=8, textColor=colors.grey)
+    elements.append(Paragraph("✓ Sim = Notificar os pais | ✗ Não = Não notificar", legend_style))
+    elements.append(Spacer(1, 20))
+    elements.append(Paragraph("Documento gerado automaticamente pelo Sistema de Gestão de Materiais", legend_style))
+    
+    doc.build(elements)
+    pdf = buffer.getvalue()
+    buffer.close()
+    
+    response = make_response(pdf)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'inline; filename=ocorrencias_todas_{datetime.now().strftime("%Y%m%d")}.pdf'
+    
+    return response
 
 if __name__ == "__main__":
     app.run(debug=True)

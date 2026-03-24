@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Relatório de Ocorrências</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 12px;
+            padding: 40px;
+            color: #333;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #00796b;
+            padding-bottom: 20px;
+        }
+        
+        .header h1 {
+            color: #00796b;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .header .info {
+            color: #666;
+            font-size: 11px;
+        }
+        
+        .resumo {
+            background: #e0f2f1;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        .resumo p {
+            margin: 5px 0;
+        }
+        
+        .resumo strong {
+            color: #00796b;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        th {
+            background: #00796b;
+            color: white;
+            padding: 10px;
+            text-align: left;
+            font-size: 11px;
+        }
+        
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #e0e0e0;
+            vertical-align: top;
+        }
+        
+        .tipo-icone {
+            font-size: 14px;
+            margin-right: 5px;
+        }
+        
+        .ocorrencia-texto {
+            max-width: 400px;
+        }
+        
+        .badge-notificar {
+            background: #43a047;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            display: inline-block;
+        }
+        
+        .badge-sem-notificar {
+            background: #e53935;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            display: inline-block;
+        }
+        
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 10px;
+            color: #999;
+            border-top: 1px solid #e0e0e0;
+            padding-top: 20px;
+        }
+        
+        @media print {
+            body {
+                padding: 20px;
+            }
+            .page-break {
+                page-break-before: always;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📋 Relatório de Ocorrências</h1>
+        {% if turma %}
+        <div class="info">Turma: <strong>{{ turma }}</strong></div>
+        {% elif aluno %}
+        <div class="info">Aluno: <strong>{{ aluno }}</strong></div>
+        {% else %}
+        <div class="info">Todas as ocorrências</div>
+        {% endif %}
+        <div class="info">Data de geração: {{ data_geracao }}</div>
+    </div>
+    
+    <div class="resumo">
+        <p><strong>📊 Resumo:</strong></p>
+        <p>Total de ocorrências: <strong>{{ ocorrencias|length }}</strong></p>
+        <p>Período: <strong>{{ ocorrencias[-1].data_ocorrencia if ocorrencias else '-' }} até {{ ocorrencias[0].data_ocorrencia if ocorrencias else '-' }}</strong></p>
+        <p>Notificações aos pais: <strong>{{ ocorrencias|selectattr('notificar_pais')|list|length }}</strong></p>
+    </div>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Aluno</th>
+                <th>Turma</th>
+                <th>Tipo</th>
+                <th>Ocorrência</th>
+                <th>Professor</th>
+                <th>Notificar</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ocorrencia in ocorrencias %}
+            <tr>
+                <td style="white-space: nowrap;">{{ ocorrencia.data_ocorrencia }}</td>
+                <td><strong>{{ ocorrencia.nome_aluno }}</strong></td>
+                <td>{{ ocorrencia.turma }}</td>
+                <td>
+                    {% set tipo_info = tipos_map.get(ocorrencia.tipo_ocorrencia) %}
+                    {% if tipo_info %}
+                    <span class="tipo-icone">{{ tipo_info.icone }}</span> {{ tipo_info.nome[:20] }}
+                    {% else %}
+                    {{ ocorrencia.tipo_ocorrencia }}
+                    {% endif %}
+                </td>
+                <td class="ocorrencia-texto">
+                    {{ ocorrencia.ocorrencia[:100] }}{% if ocorrencia.ocorrencia|length > 100 %}...{% endif %}
+                    {% if ocorrencia.descricao_personalizada %}
+                    <div style="font-size: 10px; color: #666; margin-top: 5px;">
+                        📌 {{ ocorrencia.descricao_personalizada[:80] }}{% if ocorrencia.descricao_personalizada|length > 80 %}...{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if ocorrencia.observacao %}
+                    <div style="font-size: 10px; color: #888; margin-top: 5px;">
+                        💬 {{ ocorrencia.observacao[:80] }}{% if ocorrencia.observacao|length > 80 %}...{% endif %}
+                    </div>
+                    {% endif %}
+                </td>
+                <td>{{ ocorrencia.usuario_nome }}</td>
+                <td>
+                    {% if ocorrencia.notificar_pais %}
+                    <span class="badge-notificar">✅ Sim</span>
+                    {% else %}
+                    <span class="badge-sem-notificar">❌ Não</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <div class="footer">
+        <p>Documento gerado automaticamente pelo Sistema de Gestão de Materiais</p>
+        <p>Este documento é válido como registro oficial de ocorrências</p>
+    </div>
+</body>
+</html>

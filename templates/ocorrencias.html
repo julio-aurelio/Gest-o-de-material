@@ -121,13 +121,43 @@
                 </form>
             </div>
         </div>
-        <div style="margin: 20px 0; text-align: center;">
+        
+        <div style="margin: 20px 0; text-align: center; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
             <a class="btn" href="{{ url_for('nova_ocorrencia') }}">➕ Nova Ocorrência</a>
             {% if session.role == 'admin' and total_nao_visualizadas > 0 %}
-            <a href="#" class="btn" id="marcarTodasBtn" style="background: var(--warning);">✅ Marcar todas como
-                lidas</a>
+            <a href="#" class="btn" id="marcarTodasBtn" style="background: var(--warning);">✅ Marcar todas como lidas</a>
             {% endif %}
         </div>
+
+        <!-- Seletor de PDF por Turma -->
+        <div style="background: linear-gradient(135deg, #e0f2f1 0%, #b2dfdb 100%); padding: 20px; border-radius: 16px; margin: 20px 0;">
+            <h3 style="margin: 0 0 15px 0; color: #004d40; display: flex; align-items: center; gap: 10px;">
+                <span>📄</span> Gerar Relatório PDF
+            </h3>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+                <div style="flex: 1; min-width: 200px;">
+                    <label style="display: block; margin-bottom: 5px; font-size: 13px; color: #004d40; font-weight: 500;">Selecione a Turma:</label>
+                    <select id="turmaSelect" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #ddd; font-size: 14px;">
+                        <option value="">-- Selecione uma turma --</option>
+                        <optgroup label="🌅 Manhã">
+                            {% for turma in turmas_manha %}
+                            <option value="{{ turma }}">{{ turma }}</option>
+                            {% endfor %}
+                        </optgroup>
+                        <optgroup label="🌙 Tarde">
+                            {% for turma in turmas_tarde %}
+                            <option value="{{ turma }}">{{ turma }}</option>
+                            {% endfor %}
+                        </optgroup>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <a id="pdfBtnTurma" href="#" class="btn" target="_blank" style="background: var(--danger); padding: 10px 20px;">📄 Gerar PDF da Turma</a>
+                    <a href="{{ url_for('pdf_todas_ocorrencias') }}" target="_blank" class="btn" style="background: var(--danger); padding: 10px 20px;">📄 Gerar PDF de Todas</a>
+                </div>
+            </div>
+        </div>
+
         <!-- INFO DE FILTROS ATIVOS -->
         {% if filtro_aluno or filtro_turma %}
         <div class="filtro-info">
@@ -244,6 +274,28 @@
                         .then(() => location.reload());
                 }
             });
+        }
+
+        // Seletor de PDF
+        const turmaSelect = document.getElementById('turmaSelect');
+        const pdfBtnTurma = document.getElementById('pdfBtnTurma');
+        
+        function updatePdfLink() {
+            const turma = turmaSelect.value;
+            if (turma) {
+                pdfBtnTurma.href = `/ocorrencias/pdf/turma/${encodeURIComponent(turma)}`;
+                pdfBtnTurma.style.display = 'inline-block';
+                pdfBtnTurma.style.opacity = '1';
+                pdfBtnTurma.style.pointerEvents = 'auto';
+            } else {
+                pdfBtnTurma.style.opacity = '0.5';
+                pdfBtnTurma.style.pointerEvents = 'none';
+            }
+        }
+        
+        if (turmaSelect) {
+            turmaSelect.addEventListener('change', updatePdfLink);
+            updatePdfLink();
         }
     </script>
 </body>

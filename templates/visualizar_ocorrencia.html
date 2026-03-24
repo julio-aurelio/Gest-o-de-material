@@ -24,11 +24,6 @@
                 <span>👋 Olá, {{ session.usuario_nome }}!</span>
                 {% if session.role == 'admin' %}
                 <span class="badge-admin">Admin</span>
-                {% if total_nao_visualizadas > 0 %}
-                <span class="notification-badge">
-                    <span class="badge">{{ total_nao_visualizadas }}</span>
-                </span>
-                {% endif %}
                 {% else %}
                 <span class="badge-professor">Professor</span>
                 {% endif %}
@@ -45,12 +40,7 @@
             <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
             <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
             <a href="{{ url_for('reservas') }}">⏳ Reservas</a>
-            <a href="{{ url_for('listar_ocorrencias') }}" class="nav-link-with-badge" id="ocorrencia">
-                📝 Ocorrências
-                {% if session.role == 'admin' and total_nao_visualizadas > 0 %}
-                <span class="nav-badge">{{ total_nao_visualizadas }}</span>
-                {% endif %}
-            </a>
+            <a href="{{ url_for('listar_ocorrencias') }}">📝 Ocorrências</a>
         </nav>
 
         <div class="ocorrencia-detalhes">
@@ -109,10 +99,14 @@
             </div>
         </div>
 
-        <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+        <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
             <a class="btn" href="{{ url_for('listar_ocorrencias') }}">⬅️ Voltar</a>
             {% if session.role == 'admin' or ocorrencia.usuario_id == session.usuario_id %}
             <a class="btn" href="{{ url_for('editar_ocorrencia', ocorrencia_id=ocorrencia.id) }}">✏️ Editar</a>
+            {% endif %}
+            {% if session.role == 'admin' %}
+            <a class="btn" href="{{ url_for('pdf_por_aluno', nome_aluno=ocorrencia.nome_aluno) }}" target="_blank" style="background: var(--danger);">📄 PDF do Aluno</a>
+            <a class="btn" href="{{ url_for('pdf_por_turma', turma=ocorrencia.turma) }}" target="_blank" style="background: var(--danger);">📄 PDF da Turma</a>
             {% endif %}
         </div>
     </div>
