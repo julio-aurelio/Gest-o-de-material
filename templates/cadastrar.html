@@ -24,6 +24,11 @@
                 <span>👋 Olá, {{ session.usuario_nome }}!</span>
                 {% if session.role == 'admin' %}
                 <span class="badge-admin">Admin</span>
+                {% if total_nao_visualizadas > 0 %}
+                <span class="notification-badge">
+                    <span class="badge">{{ total_nao_visualizadas }}</span>
+                </span>
+                {% endif %}
                 {% else %}
                 <span class="badge-professor">Professor</span>
                 {% endif %}

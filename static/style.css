@@ -1174,3 +1174,224 @@ span.indisponivel {
         font-size: 11px;
     }
 }
+
+
+/* ==================== NOTIFICAÇÕES ==================== */
+.notification-badge {
+    position: relative;
+    display: inline-block;
+}
+
+.notification-badge .badge {
+    position: absolute;
+    top: -8px;
+    right: -12px;
+    background: var(--danger);
+    color: white;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.7);
+    }
+    70% {
+        transform: scale(1.1);
+        box-shadow: 0 0 0 5px rgba(229, 57, 53, 0);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(229, 57, 53, 0);
+    }
+}
+
+/* Bolinha de nova ocorrência no card */
+.ocorrencia-nova {
+    position: relative;
+    border-left: 4px solid var(--danger);
+    background: linear-gradient(135deg, #fff 0%, #fff5f5 100%);
+}
+
+.ocorrencia-nova::before {
+    content: "●";
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    color: var(--danger);
+    font-size: 12px;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* Indicador no menu */
+.nav-link-with-badge {
+    position: relative;
+}
+
+.nav-link-with-badge .nav-badge {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: var(--danger);
+    color: white;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+}
+
+#ocorrencia{
+    background-color: #f55b5b;
+}
+
+/* ==================== TIPOS DE OCORRÊNCIA ==================== */
+.tipos-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.tipo-item {
+    background: var(--gray-light);
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tipo-item:hover {
+    border-color: var(--primary);
+    background: var(--primary-light);
+}
+
+.tipo-item.selected {
+    border-color: var(--primary);
+    background: var(--primary-light);
+    box-shadow: 0 2px 8px rgba(0,121,107,0.2);
+}
+
+.tipo-item input {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    margin: 0;
+}
+
+.tipo-item label {
+    flex: 1;
+    cursor: pointer;
+    margin: 0;
+    font-size: 14px;
+    font-weight: normal;
+}
+
+.tipo-icone {
+    font-size: 20px;
+}
+
+.descricao-outros {
+    display: none;
+    margin-top: 15px;
+}
+
+.descricao-outros.active {
+    display: block;
+}
+
+/* ==================== CARD DE OCORRÊNCIA ==================== */
+.card-ocorrencia {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.card-ocorrencia:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-hover);
+}
+
+.tipo-icone-card {
+    display: inline-block;
+    margin-right: 5px;
+}
+
+.click-hint {
+    font-size: 11px;
+    color: var(--gray);
+    margin-top: 8px;
+    font-style: italic;
+}
+
+/* ==================== VISUALIZAR OCORRÊNCIA ==================== */
+.ocorrencia-detalhes {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 30px;
+    margin-top: 20px;
+    box-shadow: var(--shadow);
+}
+
+.ocorrencia-detalhes h2 {
+    color: var(--primary);
+    border-bottom: 2px solid var(--primary-light);
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+
+.detalhe-linha {
+    display: flex;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.detalhe-label {
+    font-weight: 600;
+    width: 180px;
+    color: var(--primary-dark);
+}
+
+.detalhe-valor {
+    flex: 1;
+    color: var(--dark);
+    line-height: 1.5;
+}
+
+.detalhe-valor p {
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .detalhe-linha {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .detalhe-label {
+        width: 100%;
+    }
+    
+    .tipos-container {
+        grid-template-columns: 1fr;
+    }
+}

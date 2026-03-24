@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Visualizar Ocorrência</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div id="flash-container">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="container">
+        <div class="page-header">
+            <h1>📄 Detalhes da Ocorrência</h1>
+            <div class="user-welcome">
+                <span>👋 Olá, {{ session.usuario_nome }}!</span>
+                {% if session.role == 'admin' %}
+                <span class="badge-admin">Admin</span>
+                {% if total_nao_visualizadas > 0 %}
+                <span class="notification-badge">
+                    <span class="badge">{{ total_nao_visualizadas }}</span>
+                </span>
+                {% endif %}
+                {% else %}
+                <span class="badge-professor">Professor</span>
+                {% endif %}
+                <a href="{{ url_for('logout') }}" class="logout-link">🚪 Sair</a>
+            </div>
+        </div>
+
+        <nav>
+            <a href="{{ url_for('index') }}">📦 Todos Materiais</a>
+            {% if session.role == 'admin' %}
+            <a href="{{ url_for('listar_usuarios') }}">👥 Usuários</a>
+            <a href="{{ url_for('admin_dashboard') }}">📊 Dashboard</a>
+            {% endif %}
+            <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
+            <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
+            <a href="{{ url_for('reservas') }}">⏳ Reservas</a>
+            <a href="{{ url_for('listar_ocorrencias') }}" class="nav-link-with-badge" id="ocorrencia">
+                📝 Ocorrências
+                {% if session.role == 'admin' and total_nao_visualizadas > 0 %}
+                <span class="nav-badge">{{ total_nao_visualizadas }}</span>
+                {% endif %}
+            </a>
+        </nav>
+
+        <div class="ocorrencia-detalhes">
+            <h2>{{ ocorrencia.nome_aluno }} ({{ ocorrencia.turma }})</h2>
+            
+            <div class="detalhe-linha">
+                <div class="detalhe-label">📅 Data:</div>
+                <div class="detalhe-valor">{{ ocorrencia.data_ocorrencia }}</div>
+            </div>
+            
+            <div class="detalhe-linha">
+                <div class="detalhe-label">👨‍🏫 Professor responsável:</div>
+                <div class="detalhe-valor">{{ ocorrencia.usuario_nome }}</div>
+            </div>
+            
+            <div class="detalhe-linha">
+                <div class="detalhe-label">📝 Tipo de Ocorrência:</div>
+                <div class="detalhe-valor">
+                    {% set tipo_info = tipos_map.get(ocorrencia.tipo_ocorrencia) %}
+                    {% if tipo_info %}
+                    <span class="tipo-icone-card">{{ tipo_info.icone }}</span> {{ tipo_info.nome }}
+                    {% else %}
+                    {{ ocorrencia.tipo_ocorrencia }}
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="detalhe-linha">
+                <div class="detalhe-label">📝 Descrição:</div>
+                <div class="detalhe-valor">
+                    {{ ocorrencia.ocorrencia }}
+                    {% if ocorrencia.descricao_personalizada %}
+                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e0e0e0;">
+                        <strong>Detalhes:</strong><br>
+                        {{ ocorrencia.descricao_personalizada }}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            {% if ocorrencia.observacao %}
+            <div class="detalhe-linha">
+                <div class="detalhe-label">📌 Observação:</div>
+                <div class="detalhe-valor">{{ ocorrencia.observacao }}</div>
+            </div>
+            {% endif %}
+            
+            <div class="detalhe-linha">
+                <div class="detalhe-label">📢 Notificar pais:</div>
+                <div class="detalhe-valor">{% if ocorrencia.notificar_pais %}✅ Sim{% else %}❌ Não{% endif %}</div>
+            </div>
+            
+            <div class="detalhe-linha">
+                <div class="detalhe-label">🕐 Registrado em:</div>
+                <div class="detalhe-valor">{{ ocorrencia.created_at[:16] }}</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+            <a class="btn" href="{{ url_for('listar_ocorrencias') }}">⬅️ Voltar</a>
+            {% if session.role == 'admin' or ocorrencia.usuario_id == session.usuario_id %}
+            <a class="btn" href="{{ url_for('editar_ocorrencia', ocorrencia_id=ocorrencia.id) }}">✏️ Editar</a>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

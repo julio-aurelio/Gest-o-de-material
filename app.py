@@ -14,7 +14,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ==================== CACHE OTIMIZADO ====================
 class SimpleCache:
-    def __init__(self, timeout=600):  # 10 MINUTOS
+    def __init__(self, timeout=600):
         self.cache = {}
         self.timeout = timeout
     
@@ -91,7 +91,6 @@ def get_todos_dados():
     
     hoje = datetime.now().strftime("%Y-%m-%d")
     
-    # Buscar tudo em paralelo (3 consultas apenas)
     materiais = supabase.table("materiais").select("*").execute().data
     emprestimos = supabase.table("emprestimos")\
         .select("material_id, turno, horario, quantidade_emprestada, data_emprestimo_data")\
@@ -101,22 +100,18 @@ def get_todos_dados():
         .select("material_id, turno, horario, quantidade_reservada, data_retirada")\
         .execute().data
     
-    # Criar índice em memória para buscas rápidas
     uso = {}
     
-    # Adicionar empréstimos ao índice
     for e in emprestimos:
         if e.get("data_emprestimo_data") == hoje:
             key = f"{e['material_id']}_{e['turno']}_{e['horario']}"
             uso[key] = uso.get(key, 0) + e.get("quantidade_emprestada", 1)
     
-    # Adicionar reservas ao índice
     for r in reservas:
         if r.get("data_retirada") == hoje:
             key = f"{r['material_id']}_{r['turno']}_{r['horario']}"
             uso[key] = uso.get(key, 0) + r.get("quantidade_reservada", 1)
     
-    # Processar materiais em memória
     for material in materiais:
         total = material["quantidade_total"]
         horarios_manha = []
@@ -125,14 +120,12 @@ def get_todos_dados():
         total_disponivel_tarde = 0
         
         for horario in HORARIOS:
-            # Manhã
             usado_manha = uso.get(f"{material['id']}_Manhã_{horario}", 0)
             disp_manha = total - usado_manha
             if disp_manha > 0:
                 horarios_manha.append(horario)
                 total_disponivel_manha += disp_manha
             
-            # Tarde
             usado_tarde = uso.get(f"{material['id']}_Tarde_{horario}", 0)
             disp_tarde = total - usado_tarde
             if disp_tarde > 0:
@@ -146,7 +139,6 @@ def get_todos_dados():
         material["disponiveis_tarde"] = total_disponivel_tarde
         material["disponiveis"] = total_disponivel_manha + total_disponivel_tarde
     
-    # Totais
     total_materiais = sum(m["quantidade_total"] for m in materiais)
     total_emprestados = len(emprestimos)
     total_reservados = len(reservas)
@@ -162,7 +154,6 @@ def get_todos_dados():
     return resultado
 
 def get_disponibilidade_por_horario(material_id, data, turno, horario):
-    """Versão rápida com cache"""
     cache_key = f"disp_{material_id}_{data}_{turno}_{horario}"
     cached = cache.get(cache_key)
     if cached is not None:
@@ -344,7 +335,6 @@ def emprestar(material_id):
         data_retirada = request.form.get("data_retirada", datetime.now().strftime("%Y-%m-%d"))
         turno = get_turno_by_turma(turma)
         
-        # Verificar disponibilidade
         disponivel = get_disponibilidade_por_horario(material_id, data_retirada, turno, horario)
         
         if quantidade > disponivel:
@@ -390,7 +380,6 @@ def emprestar(material_id):
         cache.clear()
         return redirect(url_for("index"))
     
-    # GET - mostrar formulário
     hoje = datetime.now().strftime("%Y-%m-%d")
     disponibilidades = {}
     for horario in HORARIOS:
@@ -715,34 +704,42 @@ def admin_dashboard():
                          ultimos_emprestimos=ultimos_emprestimos)
 
 # ==================== OCORRÊNCIAS ====================
+# ==================== OCORRÊNCIAS ====================
+TIPOS_OCORRENCIA = [
+    {"id": "disciplina", "nome": "Questões Disciplinares/Comportamentais", "icone": "⚠️"},
+    {"id": "agressao", "nome": "Agressão Escolar", "icone": "👊"},
+    {"id": "dano", "nome": "Danos ao Patrimônio", "icone": "💔"},
+    {"id": "bullying", "nome": "Bullying e Cyberbullying", "icone": "😔"},
+    {"id": "aparelhos", "nome": "Uso Indevido de Aparelhos", "icone": "📱"},
+    {"id": "infracional", "nome": "Ato Infracional/Segurança", "icone": "🚨"},
+    {"id": "pedagogica", "nome": "Ocorrências Pedagógicas", "icone": "📚"},
+    {"id": "outros", "nome": "Outros", "icone": "📝"}
+]
+
 @app.route("/ocorrencias")
 @login_required
 def listar_ocorrencias():
     """Lista ocorrências com filtros - professores veem as próprias, admin vê todas"""
     
-    # Pegar filtros da URL
     filtro_aluno = request.args.get("aluno", "").strip()
     filtro_turma = request.args.get("turma", "").strip()
     
-    # Base da query
     if session['role'] == 'admin':
         query = supabase.table("ocorrencias").select("*")
     else:
         query = supabase.table("ocorrencias").select("*").eq("usuario_id", session['usuario_id'])
     
-    # Aplicar filtro de aluno (busca parcial)
     if filtro_aluno:
         query = query.ilike("nome_aluno", f"%{filtro_aluno}%")
     
-    # Aplicar filtro de turma
     if filtro_turma:
         query = query.eq("turma", filtro_turma)
     
-    # Ordenar
     ocorrencias = query.order("data_ocorrencia", desc=True).order("created_at", desc=True).execute().data
     
-    # Contar notificações pendentes
     notificacoes_pendentes = sum(1 for o in ocorrencias if o.get("notificar_pais"))
+    
+    tipos_map = {t["id"]: t for t in TIPOS_OCORRENCIA}
     
     return render_template("ocorrencias.html", 
                          ocorrencias=ocorrencias, 
@@ -750,22 +747,30 @@ def listar_ocorrencias():
                          filtro_turma=filtro_turma,
                          turmas_manha=TURMAS_MANHA,
                          turmas_tarde=TURMAS_TARDE,
-                         notificacoes_pendentes=notificacoes_pendentes)
+                         notificacoes_pendentes=notificacoes_pendentes,
+                         tipos_map=tipos_map)
 
 @app.route("/ocorrencias/nova", methods=["GET", "POST"])
 @login_required
 def nova_ocorrencia():
-    """Criar nova ocorrência"""
     if request.method == "POST":
         nome_aluno = request.form["nome_aluno"].strip()
         turma = request.form["turma"]
-        ocorrencia = request.form["ocorrencia"].strip()
+        tipo_ocorrencia = request.form.get("tipo_ocorrencia", "outros")
+        descricao_personalizada = request.form.get("descricao_personalizada", "").strip()
         observacao = request.form.get("observacao", "").strip()
         notificar_pais = request.form.get("notificar_pais") == "on"
         
-        if not nome_aluno or not ocorrencia:
-            flash("Nome do aluno e ocorrência são obrigatórios.", "error")
+        if not nome_aluno:
+            flash("Nome do aluno é obrigatório.", "error")
             return redirect(url_for("nova_ocorrencia"))
+        
+        # Se for "outros" e tiver descrição, usa a descrição
+        if tipo_ocorrencia == "outros" and descricao_personalizada:
+            ocorrencia_text = descricao_personalizada
+        else:
+            tipo_nome = next((t["nome"] for t in TIPOS_OCORRENCIA if t["id"] == tipo_ocorrencia), "Outros")
+            ocorrencia_text = tipo_nome
         
         supabase.table("ocorrencias").insert({
             "usuario_id": session['usuario_id'],
@@ -773,29 +778,34 @@ def nova_ocorrencia():
             "data_ocorrencia": datetime.now().strftime("%Y-%m-%d"),
             "nome_aluno": nome_aluno,
             "turma": turma,
-            "ocorrencia": ocorrencia,
+            "ocorrencia": ocorrencia_text,
+            "tipo_ocorrencia": tipo_ocorrencia,
+            "descricao_personalizada": descricao_personalizada if tipo_ocorrencia == "outros" else None,
             "observacao": observacao,
             "notificar_pais": notificar_pais,
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "visualizada": False
         }).execute()
         
         cache.clear()
         flash("Ocorrência registrada com sucesso!", "success")
         return redirect(url_for("listar_ocorrencias"))
     
-    return render_template("nova_ocorrencia.html", turmas_manha=TURMAS_MANHA, turmas_tarde=TURMAS_TARDE, datetime=datetime)
+    return render_template("nova_ocorrencia.html", 
+                         turmas_manha=TURMAS_MANHA, 
+                         turmas_tarde=TURMAS_TARDE, 
+                         datetime=datetime,
+                         tipos_ocorrencia=TIPOS_OCORRENCIA)
 
 @app.route("/ocorrencias/editar/<int:ocorrencia_id>", methods=["GET", "POST"])
 @login_required
 def editar_ocorrencia(ocorrencia_id):
-    """Editar ocorrência - apenas quem criou ou admin"""
     ocorrencia = supabase.table("ocorrencias").select("*").eq("id", ocorrencia_id).single().execute().data
     
     if not ocorrencia:
         flash("Ocorrência não encontrada.", "error")
         return redirect(url_for("listar_ocorrencias"))
     
-    # Verificar permissão
     if session['role'] != 'admin' and ocorrencia['usuario_id'] != session['usuario_id']:
         flash("Você só pode editar suas próprias ocorrências.", "error")
         return redirect(url_for("listar_ocorrencias"))
@@ -803,18 +813,27 @@ def editar_ocorrencia(ocorrencia_id):
     if request.method == "POST":
         nome_aluno = request.form["nome_aluno"].strip()
         turma = request.form["turma"]
-        ocorrencia_text = request.form["ocorrencia"].strip()
+        tipo_ocorrencia = request.form.get("tipo_ocorrencia", "outros")
+        descricao_personalizada = request.form.get("descricao_personalizada", "").strip()
         observacao = request.form.get("observacao", "").strip()
         notificar_pais = request.form.get("notificar_pais") == "on"
         
-        if not nome_aluno or not ocorrencia_text:
-            flash("Nome do aluno e ocorrência são obrigatórios.", "error")
+        if not nome_aluno:
+            flash("Nome do aluno é obrigatório.", "error")
             return redirect(url_for("editar_ocorrencia", ocorrencia_id=ocorrencia_id))
+        
+        if tipo_ocorrencia == "outros" and descricao_personalizada:
+            ocorrencia_text = descricao_personalizada
+        else:
+            tipo_nome = next((t["nome"] for t in TIPOS_OCORRENCIA if t["id"] == tipo_ocorrencia), "Outros")
+            ocorrencia_text = tipo_nome
         
         supabase.table("ocorrencias").update({
             "nome_aluno": nome_aluno,
             "turma": turma,
             "ocorrencia": ocorrencia_text,
+            "tipo_ocorrencia": tipo_ocorrencia,
+            "descricao_personalizada": descricao_personalizada if tipo_ocorrencia == "outros" else None,
             "observacao": observacao,
             "notificar_pais": notificar_pais
         }).eq("id", ocorrencia_id).execute()
@@ -823,19 +842,44 @@ def editar_ocorrencia(ocorrencia_id):
         flash("Ocorrência atualizada com sucesso!", "success")
         return redirect(url_for("listar_ocorrencias"))
     
-    return render_template("editar_ocorrencia.html", ocorrencia=ocorrencia, turmas_manha=TURMAS_MANHA, turmas_tarde=TURMAS_TARDE)
+    return render_template("editar_ocorrencia.html", 
+                         ocorrencia=ocorrencia, 
+                         turmas_manha=TURMAS_MANHA, 
+                         turmas_tarde=TURMAS_TARDE,
+                         tipos_ocorrencia=TIPOS_OCORRENCIA)
 
-@app.route("/ocorrencias/excluir/<int:ocorrencia_id>", methods=["POST"])
+@app.route("/ocorrencias/visualizar/<int:ocorrencia_id>")
 @login_required
-def excluir_ocorrencia(ocorrencia_id):
-    """Excluir ocorrência - apenas quem criou ou admin"""
+def visualizar_ocorrencia(ocorrencia_id):
+    """Página expandida para visualizar a ocorrência completa"""
     ocorrencia = supabase.table("ocorrencias").select("*").eq("id", ocorrencia_id).single().execute().data
     
     if not ocorrencia:
         flash("Ocorrência não encontrada.", "error")
         return redirect(url_for("listar_ocorrencias"))
     
-    # Verificar permissão
+    if session['role'] != 'admin' and ocorrencia['usuario_id'] != session['usuario_id']:
+        flash("Você não tem permissão para visualizar esta ocorrência.", "error")
+        return redirect(url_for("listar_ocorrencias"))
+    
+    if session['role'] == 'admin' and not ocorrencia.get("visualizada"):
+        supabase.table("ocorrencias").update({"visualizada": True}).eq("id", ocorrencia_id).execute()
+    
+    tipos_map = {t["id"]: t for t in TIPOS_OCORRENCIA}
+    
+    return render_template("visualizar_ocorrencia.html", 
+                         ocorrencia=ocorrencia,
+                         tipos_map=tipos_map)
+
+@app.route("/ocorrencias/excluir/<int:ocorrencia_id>", methods=["POST"])
+@login_required
+def excluir_ocorrencia(ocorrencia_id):
+    ocorrencia = supabase.table("ocorrencias").select("*").eq("id", ocorrencia_id).single().execute().data
+    
+    if not ocorrencia:
+        flash("Ocorrência não encontrada.", "error")
+        return redirect(url_for("listar_ocorrencias"))
+    
     if session['role'] != 'admin' and ocorrencia['usuario_id'] != session['usuario_id']:
         flash("Você só pode excluir suas próprias ocorrências.", "error")
         return redirect(url_for("listar_ocorrencias"))
@@ -844,6 +888,24 @@ def excluir_ocorrencia(ocorrencia_id):
     cache.clear()
     flash("Ocorrência excluída com sucesso!", "success")
     return redirect(url_for("listar_ocorrencias"))
+
+@app.route("/ocorrencias/marcar_visualizada/<int:ocorrencia_id>", methods=["POST"])
+@login_required
+def marcar_visualizada(ocorrencia_id):
+    if session['role'] != 'admin':
+        return jsonify({"error": "Acesso negado"}), 403
+    
+    supabase.table("ocorrencias").update({"visualizada": True}).eq("id", ocorrencia_id).execute()
+    return jsonify({"success": True})
+
+@app.route("/ocorrencias/marcar_todas_visualizadas", methods=["POST"])
+@login_required
+def marcar_todas_visualizadas():
+    if session['role'] != 'admin':
+        return jsonify({"error": "Acesso negado"}), 403
+    
+    supabase.table("ocorrencias").update({"visualizada": True}).eq("visualizada", False).execute()
+    return jsonify({"success": True})
 
 # ==================== PROCESSAR RESERVAS ====================
 @app.route("/processar_reservas")
@@ -887,6 +949,23 @@ def processar_reservas():
         flash(f"Erro ao processar reservas: {str(e)}", "error")
     
     return redirect(url_for("index"))
+
+# ==================== CONTEXT PROCESSOR GLOBAL ====================
+@app.context_processor
+def inject_global_variables():
+    """Injeta variáveis globais em todos os templates"""
+    total_nao_visualizadas = 0
+    if 'usuario_id' in session and session.get('role') == 'admin':
+        try:
+            nao_visualizadas = supabase.table("ocorrencias").select("id").eq("visualizada", False).execute().data
+            total_nao_visualizadas = len(nao_visualizadas)
+        except:
+            total_nao_visualizadas = 0
+    return dict(total_nao_visualizadas=total_nao_visualizadas)
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
 
 if __name__ == "__main__":
     app.run(debug=True)

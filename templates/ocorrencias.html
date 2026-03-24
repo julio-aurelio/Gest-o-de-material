@@ -26,6 +26,11 @@
                 <span>👋 Olá, {{ session.usuario_nome }}!</span>
                 {% if session.role == 'admin' %}
                 <span class="badge-admin">Admin</span>
+                {% if total_nao_visualizadas > 0 %}
+                <span class="notification-badge">
+                    <span class="badge">{{ total_nao_visualizadas }}</span>
+                </span>
+                {% endif %}
                 {% else %}
                 <span class="badge-professor">Professor</span>
                 {% endif %}
@@ -38,6 +43,9 @@
             {% if notificacoes_pendentes > 0 %}
             | 📢 Notificações pendentes: <strong class="badge-notificacao">{{ notificacoes_pendentes }}</strong>
             {% endif %}
+            {% if session.role == 'admin' and total_nao_visualizadas > 0 %}
+            | 🆕 Novas ocorrências: <strong style="color: var(--danger);">{{ total_nao_visualizadas }}</strong>
+            {% endif %}
         </div>
 
         <nav>
@@ -49,10 +57,16 @@
             <a href="{{ url_for('cadastrar') }}">➕ Cadastrar</a>
             <a href="{{ url_for('emprestimos_ativos') }}">📋 Emprestados</a>
             <a href="{{ url_for('reservas') }}">⏳ Reservas</a>
-            <a href="{{ url_for('listar_ocorrencias') }}">📝 Ocorrências</a>
+            <a href="{{ url_for('listar_ocorrencias') }}" class="nav-link-with-badge" id="ocorrencia">
+                📝 Ocorrências
+                {% if session.role == 'admin' and total_nao_visualizadas > 0 %}
+                <span class="nav-badge">{{ total_nao_visualizadas }}</span>
+                {% endif %}
+            </a>
         </nav>
 
-        <!-- FILTROS MELHORADOS -->
+
+        <!-- FILTROS -->
         <div class="filtros-container">
             <div class="filtros-header" onclick="toggleFiltros()">
                 <h3>
@@ -109,6 +123,10 @@
         </div>
         <div style="margin: 20px 0; text-align: center;">
             <a class="btn" href="{{ url_for('nova_ocorrencia') }}">➕ Nova Ocorrência</a>
+            {% if session.role == 'admin' and total_nao_visualizadas > 0 %}
+            <a href="#" class="btn" id="marcarTodasBtn" style="background: var(--warning);">✅ Marcar todas como
+                lidas</a>
+            {% endif %}
         </div>
         <!-- INFO DE FILTROS ATIVOS -->
         {% if filtro_aluno or filtro_turma %}
@@ -129,24 +147,42 @@
         {% if ocorrencias %}
         <ul>
             {% for ocorrencia in ocorrencias %}
-            <li>
+            <li class="card-ocorrencia {% if session.role == 'admin' and not ocorrencia.visualizada %}ocorrencia-nova{% endif %}"
+                onclick="window.location.href='{{ url_for('visualizar_ocorrencia', ocorrencia_id=ocorrencia.id) }}'">
                 <h3>📅 {{ ocorrencia.data_ocorrencia }} - {{ ocorrencia.nome_aluno }} ({{ ocorrencia.turma }})</h3>
                 <p><strong>👨‍🏫 Professor:</strong> {{ ocorrencia.usuario_nome }}</p>
-                <p><strong>📝 Ocorrência:</strong> {{ ocorrencia.ocorrencia }}</p>
+                <p>
+                    <strong>📝 Ocorrência:</strong>
+                    {% set tipo_info = tipos_map.get(ocorrencia.tipo_ocorrencia) %}
+                    {% if tipo_info %}
+                    <span class="tipo-icone-card">{{ tipo_info.icone }}</span>
+                    {% endif %}
+                    {{ ocorrencia.ocorrencia[:80] }}{% if ocorrencia.ocorrencia|length > 80 %}...{% endif %}
+                </p>
+                {% if ocorrencia.descricao_personalizada %}
+                <p><strong>📌 Detalhes:</strong> {{ ocorrencia.descricao_personalizada[:60] }}{% if
+                    ocorrencia.descricao_personalizada|length > 60 %}...{% endif %}</p>
+                {% endif %}
                 {% if ocorrencia.observacao %}
-                <p><strong>📌 Observação:</strong> {{ ocorrencia.observacao }}</p>
+                <p><strong>📌 Observação:</strong> {{ ocorrencia.observacao[:60] }}{% if ocorrencia.observacao|length >
+                    60 %}...{% endif %}</p>
                 {% endif %}
                 <p><strong>📢 Notificar pais:</strong> {% if ocorrencia.notificar_pais %}✅ Sim{% else %}❌ Não{% endif %}
                 </p>
                 <p><small>🕐 Registrado em: {{ ocorrencia.created_at[:16] }}</small></p>
+                <p class="click-hint">💡 Clique no card para ver detalhes completos</p>
 
-                <!-- Botões de editar/excluir - só para quem criou ou admin -->
-                {% if session.role == 'admin' or ocorrencia.usuario_id == session.usuario_id %}
-                <div style="margin-top: 10px;">
+                <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;"
+                    onclick="event.stopPropagation()">
+                    {% if session.role == 'admin' or ocorrencia.usuario_id == session.usuario_id %}
                     <a class="btn" href="{{ url_for('editar_ocorrencia', ocorrencia_id=ocorrencia.id) }}">✏️ Editar</a>
                     <a href="#" class="btn" onclick="excluirOcorrencia({{ ocorrencia.id }})">🗑️ Excluir</a>
+                    {% endif %}
+                    {% if session.role == 'admin' and not ocorrencia.visualizada %}
+                    <a href="#" class="btn" onclick="marcarVisualizada({{ ocorrencia.id }}, this)"
+                        style="background: var(--success);">✅ Marcar como lida</a>
+                    {% endif %}
                 </div>
-                {% endif %}
             </li>
             {% endfor %}
         </ul>
@@ -184,6 +220,30 @@
                 fetch('/ocorrencias/excluir/' + id, { method: 'POST' })
                     .then(() => location.reload());
             }
+        }
+
+        function marcarVisualizada(id, btn) {
+            fetch('/ocorrencias/marcar_visualizada/' + id, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const li = btn.closest('li');
+                        li.classList.remove('ocorrencia-nova');
+                        btn.style.display = 'none';
+                        location.reload();
+                    }
+                });
+        }
+
+        const marcarTodasBtn = document.getElementById('marcarTodasBtn');
+        if (marcarTodasBtn) {
+            marcarTodasBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                if (confirm('Marcar todas as ocorrências como lidas?')) {
+                    fetch('/ocorrencias/marcar_todas_visualizadas', { method: 'POST' })
+                        .then(() => location.reload());
+                }
+            });
         }
     </script>
 </body>
