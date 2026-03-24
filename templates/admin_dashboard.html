@@ -73,33 +73,105 @@
         </nav>
 
         <div class="dashboard-section">
-            <h2>👨‍🏫 Últimos Empréstimos</h2>
-            <table class="user-table">
-                <thead>
-                    <tr>
-                        <th>Material</th>
-                        <th>Professor</th>
-                        <th>Data</th>
-                        <th>Horário</th>
-                        <th>Quantidade</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for emp in ultimos_emprestimos %}
-                    <tr>
-                        <td>{{ emp.materiais.nome }}</td>
-                        <td>{{ emp.usuario_nome or '-' }}</td>
-                        <td>{{ emp.data_emprestimo[:10] }}</td>
-                        <td>{{ emp.horario }}</td>
-                        <td>{{ emp.quantidade_emprestada }}</td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="5" style="text-align: center;">Nenhum empréstimo registrado</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <h2>
+                👨‍🏫 Últimos Empréstimos
+                <span class="table-count">{{ ultimos_emprestimos|length }} registros</span>
+            </h2>
+            <div class="user-table-wrapper">
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>Material</th>
+                            <th>Professor</th>
+                            <th>Turma</th>
+                            <th>Turno</th>
+                            <th>Horário</th>
+                            <th>Data</th>
+                            <th>Quantidade</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for emp in ultimos_emprestimos %}
+                        <tr>
+                            <td><strong>{{ emp.materiais.nome if emp.materiais else '-' }}</strong></td>
+                            <td>{{ emp.usuario_nome or emp.usuario_nome or '-' }}</td>
+                            <td>
+                                {% if emp.turma %}
+                                <span class="badge-turma">{{ emp.turma }}</span>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if emp.turno %}
+                                <span class="badge-turno">{{ emp.turno }}</span>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if emp.horario %}
+                                <span class="badge-horario">{{ emp.horario }}</span>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>{{ emp.data_emprestimo[:10] if emp.data_emprestimo else '-' }}</td>
+                            <td>{{ emp.quantidade_emprestada or 1 }}x</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 40px;">
+                                📭 Nenhum empréstimo registrado ainda
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Gráfico de empréstimos por dia -->
+        <div class="dashboard-section">
+            <h2>📈 Empréstimos por Dia (Últimos 7 dias)</h2>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; padding: 20px;">
+                {% for item in emprestimos_por_dia %}
+                <div style="text-align: center; flex: 1; min-width: 45px;">
+                    <div style="background: var(--primary); width: 100%; height: {{ item.total * 20 + 20 }}px; min-height: 20px; border-radius: 8px 8px 0 0; margin-bottom: 5px;"></div>
+                    <div style="font-size: 11px;">{{ item.data[5:] }}</div>
+                    <div style="font-weight: bold; font-size: 12px;">{{ item.total }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Top materiais mais emprestados -->
+        <div class="dashboard-section">
+            <h2>🏆 Materiais Mais Emprestados</h2>
+            <div class="user-table-wrapper" style="max-height: 300px;">
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>Material</th>
+                            <th>Total Empréstimos</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for nome, qtd in top_materiais %}
+                        <tr>
+                            <td><strong>{{ nome }}</strong></td>
+                            <td>{{ qtd }} empréstimos</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="2" style="text-align: center; padding: 40px;">
+                                📊 Nenhum dado disponível
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </body>

@@ -1079,7 +1079,7 @@ span.indisponivel {
     border-radius: 30px;
     font-size: 12px;
     font-weight: 600;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
 .filtro-info .btn-limpar-filtro {
@@ -1103,71 +1103,71 @@ span.indisponivel {
     .filtros-header {
         padding: 14px 18px;
     }
-    
+
     .filtros-header h3 {
         font-size: 16px;
     }
-    
+
     .resultados-counter {
         font-size: 11px;
         padding: 4px 10px;
     }
-    
+
     .filtros-toggle {
         padding: 6px 12px;
         font-size: 12px;
     }
-    
+
     .filtros-body {
         padding: 20px;
     }
-    
+
     .filtros-body.collapsed {
         padding: 0 20px;
     }
-    
+
     .filtros-form {
         max-width: 100%;
         gap: 15px;
     }
-    
+
     .filtro-group {
         max-width: 100%;
     }
-    
+
     .filtro-group label {
         font-size: 11px;
     }
-    
+
     .filtro-group input,
     .filtro-group select {
         padding: 10px 14px;
         font-size: 14px;
     }
-    
+
     .filtro-group .input-icon {
         top: 40px;
         right: 12px;
         font-size: 14px;
     }
-    
+
     .filtro-actions .btn {
         max-width: 100%;
         padding: 12px;
     }
-    
+
     .filtro-info {
         margin: 0 18px 18px 18px;
         padding: 12px 16px;
         flex-direction: column;
         text-align: center;
     }
-    
+
     .filtro-info p {
         font-size: 13px;
         justify-content: center;
     }
-    
+
     .filtro-info .badge-filtro,
     .filtro-info .btn-limpar-filtro {
         padding: 5px 12px;
@@ -1204,10 +1204,12 @@ span.indisponivel {
         transform: scale(1);
         box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.7);
     }
+
     70% {
         transform: scale(1.1);
         box-shadow: 0 0 0 5px rgba(229, 57, 53, 0);
     }
+
     100% {
         transform: scale(1);
         box-shadow: 0 0 0 0 rgba(229, 57, 53, 0);
@@ -1232,8 +1234,15 @@ span.indisponivel {
 }
 
 @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
 }
 
 /* Indicador no menu */
@@ -1257,7 +1266,7 @@ span.indisponivel {
     font-weight: bold;
 }
 
-#ocorrencia{
+#ocorrencia {
     background-color: #f55b5b;
 }
 
@@ -1289,7 +1298,7 @@ span.indisponivel {
 .tipo-item.selected {
     border-color: var(--primary);
     background: var(--primary-light);
-    box-shadow: 0 2px 8px rgba(0,121,107,0.2);
+    box-shadow: 0 2px 8px rgba(0, 121, 107, 0.2);
 }
 
 .tipo-item input {
@@ -1386,11 +1395,11 @@ span.indisponivel {
         flex-direction: column;
         gap: 8px;
     }
-    
+
     .detalhe-label {
         width: 100%;
     }
-    
+
     .tipos-container {
         grid-template-columns: 1fr;
     }
@@ -1424,7 +1433,7 @@ span.indisponivel {
 .tipo-item.selected {
     border-color: var(--primary);
     background: var(--primary-light);
-    box-shadow: 0 2px 8px rgba(0,121,107,0.2);
+    box-shadow: 0 2px 8px rgba(0, 121, 107, 0.2);
 }
 
 .tipo-item input {
@@ -1521,11 +1530,11 @@ span.indisponivel {
         flex-direction: column;
         gap: 8px;
     }
-    
+
     .detalhe-label {
         width: 100%;
     }
-    
+
     .tipos-container {
         grid-template-columns: 1fr;
     }
@@ -1536,7 +1545,298 @@ span.indisponivel {
 
 li p,
 .detalhe-valor {
-    word-break: break-word;        /* quebra palavras grandes */
-    overflow-wrap: break-word;     /* padrão moderno */
-    white-space: normal;           /* garante quebra de linha */
+    word-break: break-word;
+    /* quebra palavras grandes */
+    overflow-wrap: break-word;
+    /* padrão moderno */
+    white-space: normal;
+    /* garante quebra de linha */
+}
+
+
+/* ==================== MELHORIAS PARA DASHBOARD ==================== */
+
+/* Container da tabela com scroll vertical */
+.dashboard-section {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    overflow-x: auto;
+}
+
+/* Tabela com altura máxima e scroll */
+.user-table-wrapper {
+    max-height: 400px;
+    overflow-y: auto;
+    overflow-x: auto;
+    border-radius: var(--radius);
+    margin-top: 15px;
+}
+
+.user-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--white);
+}
+
+.user-table thead {
+    position: sticky;
+    top: 0;
+    background: var(--primary-light);
+    z-index: 10;
+}
+
+.user-table th,
+.user-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #e0e0e0;
+    font-size: 14px;
+}
+
+.user-table th {
+    background: var(--primary-light);
+    color: var(--primary-dark);
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.user-table tbody tr:hover {
+    background: #f9f9f9;
+}
+
+/* Badges para turma, turno e horário */
+.badge-turma {
+    background: #e3f2fd;
+    color: #1976d2;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    display: inline-block;
+}
+
+.badge-turno {
+    background: #e8f5e9;
+    color: #388e3c;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    display: inline-block;
+}
+
+.badge-horario {
+    background: #fff3e0;
+    color: #f57c00;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    display: inline-block;
+}
+
+/* ==================== MEDIA QUERY MELHORADA PARA MOBILE ==================== */
+@media (max-width: 768px) {
+
+    /* ===== DASHBOARD MELHORADO PARA MOBILE ===== */
+    .dashboard-stats {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .stat-card {
+        padding: 15px;
+    }
+
+    .stat-number {
+        font-size: 1.8rem;
+    }
+
+    .stat-label {
+        font-size: 0.8rem;
+    }
+
+    /* Tabela com scroll horizontal no mobile */
+    .dashboard-section {
+        padding: 15px;
+        overflow-x: auto;
+    }
+
+    .dashboard-section h2 {
+        font-size: 1.2rem;
+        margin-bottom: 12px;
+    }
+
+    .user-table-wrapper {
+        max-height: 350px;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+
+    .user-table {
+        min-width: 600px;
+    }
+
+    .user-table th,
+    .user-table td {
+        padding: 10px 8px;
+        font-size: 0.75rem;
+        white-space: nowrap;
+    }
+
+    .user-table th:first-child,
+    .user-table td:first-child {
+        position: sticky;
+        left: 0;
+        background: var(--white);
+        z-index: 5;
+    }
+
+    .user-table thead th:first-child {
+        background: var(--primary-light);
+        z-index: 15;
+    }
+
+    /* Badges menores no mobile */
+    .badge-turma,
+    .badge-turno,
+    .badge-horario {
+        padding: 3px 6px;
+        font-size: 10px;
+    }
+
+    /* Gráfico de empréstimos */
+    .dashboard-section div[style*="display: flex"] {
+        gap: 8px;
+    }
+
+    .dashboard-section div[style*="display: flex"] div {
+        flex: 1;
+        min-width: 40px;
+    }
+
+    /* LOGIN */
+    .login-container,
+    .cadastro-container {
+        width: 95%;
+        padding: 20px;
+        margin: 30px auto;
+    }
+
+    /* FLASH */
+    .flash {
+        font-size: 0.85rem;
+        padding: 10px;
+        width: 90%;
+        left: 5%;
+        transform: translateX(0);
+    }
+
+    @keyframes slidefade {
+        0% {
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+
+        100% {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* FILTROS MOBILE */
+    .filtros-header {
+        padding: 12px 15px;
+    }
+
+    .filtros-header h3 {
+        font-size: 14px;
+    }
+
+    .resultados-counter {
+        font-size: 10px;
+        padding: 3px 8px;
+    }
+
+    .filtros-toggle {
+        padding: 5px 10px;
+        font-size: 11px;
+    }
+
+    .filtros-body {
+        padding: 15px;
+    }
+
+    .filtro-group label {
+        font-size: 11px;
+    }
+
+    .filtro-group input,
+    .filtro-group select {
+        padding: 10px;
+        font-size: 13px;
+    }
+
+    .filtro-actions .btn {
+        padding: 10px;
+        font-size: 13px;
+    }
+
+    .filtro-info {
+        margin: 0 10px 15px 10px;
+        padding: 10px;
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .filtro-info p {
+        font-size: 12px;
+        justify-content: center;
+    }
+
+    .badge-filtro {
+        font-size: 11px;
+        padding: 4px 10px;
+    }
+}
+
+/* Estilos específicos para a dashboard */
+.dashboard-section h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.table-count {
+    font-size: 14px;
+    background: var(--primary-light);
+    padding: 4px 12px;
+    border-radius: 20px;
+    color: var(--primary-dark);
+    font-weight: normal;
+}
+
+/* Scrollbar para TODOS os elementos com scroll */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--primary);
+    border-radius: 10px;
+    transition: all 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-dark);
 }

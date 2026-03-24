@@ -139,9 +139,11 @@ def processar_reservas_auto():
         
         # ========== 1. PROCESSAR DEVOLUÇÕES VENCIDAS ==========
         # Buscar empréstimos ativos com data de devolução prevista < hoje
+        # E SOMENTE aqueles que têm data_devolucao_prevista preenchida
         emprestimos_vencidos = supabase.table("emprestimos")\
             .select("*")\
             .is_("data_devolucao_real", "null")\
+            .not_.is_("data_devolucao_prevista", "null")\
             .lt("data_devolucao_prevista", hoje)\
             .execute().data
         
@@ -152,6 +154,7 @@ def processar_reservas_auto():
                     "observacao": "Devolução automática por vencimento"
                 }).eq("id", emprestimo["id"]).execute()
                 devolvidas_auto += 1
+                print(f"Devolução automática: Empréstimo {emprestimo['id']} vencido em {emprestimo['data_devolucao_prevista']}")
             except Exception as e:
                 erros += 1
                 print(f"Erro ao processar devolução automática {emprestimo.get('id')}: {str(e)}")
@@ -173,7 +176,7 @@ def processar_reservas_auto():
                 
                 if disponivel >= reserva["quantidade_reservada"]:
                     # Converter reserva em empréstimo
-                    data_devolucao_prevista = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+                    data_devolucao_prevista = (datetime.strptime(reserva["data_retirada"], "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
                     
                     supabase.table("emprestimos").insert({
                         "material_id": reserva["material_id"],
@@ -191,11 +194,13 @@ def processar_reservas_auto():
                     
                     supabase.table("reservas").delete().eq("id", reserva["id"]).execute()
                     processadas_reservas += 1
+                    print(f"Reserva convertida: {reserva['aluno']} - Material {reserva['material_id']} para {data_devolucao_prevista}")
                 else:
                     # Adiar para amanhã
                     amanha = (datetime.strptime(reserva["data_retirada"], "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
                     supabase.table("reservas").update({"data_retirada": amanha}).eq("id", reserva["id"]).execute()
                     adiadas += 1
+                    print(f"Reserva adiada: {reserva['aluno']} para {amanha}")
                     
             except Exception as e:
                 erros += 1
@@ -963,12 +968,21 @@ def admin_dashboard():
     
     top_5 = sorted(materiais_count.items(), key=lambda x: x[1], reverse=True)[:5]
     
-    ultimos_emprestimos = supabase.table("emprestimos").select("*, materiais(nome), usuarios!usuario_id(nome)")\
-        .order("data_emprestimo", desc=True).limit(10).execute().data
+    # CORRIGIDO: Buscar empréstimos com mais informações (incluindo turma e horário)
+    ultimos_emprestimos = supabase.table("emprestimos").select(
+        "*, materiais(nome), usuarios!usuario_id(nome), turma, horario, turno"
+    ).order("data_emprestimo", desc=True).limit(10).execute().data
     
     for emp in ultimos_emprestimos:
         if emp.get("usuarios"):
             emp["usuario_nome"] = emp["usuarios"]["nome"]
+        # Garantir que turma e horario estão presentes
+        if not emp.get("turma"):
+            emp["turma"] = "-"
+        if not emp.get("horario"):
+            emp["horario"] = "-"
+        if not emp.get("turno"):
+            emp["turno"] = "-"
     
     dashboard_data = {
         'total_materiais': total_materiais,
