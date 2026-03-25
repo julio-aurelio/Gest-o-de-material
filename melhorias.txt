@@ -7,6 +7,8 @@ MELHORIAS PARA FAZER:
 .No pdf precisa aparece o campo de observação;
 .BUG PARA BAIXAR O PDF APENAS DA SALA;
 .Colocar a logo ou o cabeçalho da Escola no topo do pdf;
+.Logo abaixo da logo do pdf vai ter o nome do professor que fez a correncia e para o lado direito vai ter um campo para o responsavel do aluno assinar.
+.mudar o pdf para horizontal, ou como chamam de paisagem;
 .Criar um Arquivo apenas para JS (mais especifico na pasta static);
 .Fazer boas praticas (como: Tirar o JS ou css dos HTML fazer comentarios em tudo para quando outra pessoa for ler ou tentar usar);
 .DOCUMENTAR(readme) o projeto no git para futuras apresenatações;

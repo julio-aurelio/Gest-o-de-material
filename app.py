@@ -127,8 +127,8 @@ def get_turno_by_turma(turma):
 def processar_reservas_auto():
     """
     Processa automaticamente:
-    1. Devoluções vencidas (marca como devolvido automaticamente)
-    2. Reservas que deveriam ser retiradas hoje
+    1. Reservas que deveriam ser retiradas hoje ou antes
+    2. Devoluções vencidas
     """
     try:
         hoje = datetime.now().strftime("%Y-%m-%d")
@@ -138,8 +138,6 @@ def processar_reservas_auto():
         erros = 0
         
         # ========== 1. PROCESSAR DEVOLUÇÕES VENCIDAS ==========
-        # Buscar empréstimos ativos com data de devolução prevista < hoje
-        # E SOMENTE aqueles que têm data_devolucao_prevista preenchida
         emprestimos_vencidos = supabase.table("emprestimos")\
             .select("*")\
             .is_("data_devolucao_real", "null")\
@@ -150,7 +148,7 @@ def processar_reservas_auto():
         for emprestimo in emprestimos_vencidos:
             try:
                 supabase.table("emprestimos").update({
-                    "data_devolucao_real": hoje,
+                    "data_devolucao_real": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "observacao": "Devolução automática por vencimento"
                 }).eq("id", emprestimo["id"]).execute()
                 devolvidas_auto += 1
@@ -159,7 +157,8 @@ def processar_reservas_auto():
                 erros += 1
                 print(f"Erro ao processar devolução automática {emprestimo.get('id')}: {str(e)}")
         
-        # ========== 2. PROCESSAR RESERVAS ==========
+        # ========== 2. PROCESSAR RESERVAS (CORRIGIDO) ==========
+        # Buscar reservas com data de retirada <= hoje (hoje ou passado)
         reservas = supabase.table("reservas")\
             .select("*")\
             .lte("data_retirada", hoje)\
@@ -167,6 +166,7 @@ def processar_reservas_auto():
         
         for reserva in reservas:
             try:
+                # Verificar disponibilidade para a data específica
                 disponivel = get_disponibilidade_por_horario(
                     reserva["material_id"], 
                     reserva["data_retirada"], 
@@ -194,9 +194,9 @@ def processar_reservas_auto():
                     
                     supabase.table("reservas").delete().eq("id", reserva["id"]).execute()
                     processadas_reservas += 1
-                    print(f"Reserva convertida: {reserva['aluno']} - Material {reserva['material_id']} para {data_devolucao_prevista}")
+                    print(f"Reserva convertida: {reserva['aluno']} - Material {reserva['material_id']}")
                 else:
-                    # Adiar para amanhã
+                    # Se não tiver disponível, adiar para amanhã
                     amanha = (datetime.strptime(reserva["data_retirada"], "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
                     supabase.table("reservas").update({"data_retirada": amanha}).eq("id", reserva["id"]).execute()
                     adiadas += 1
@@ -210,8 +210,7 @@ def processar_reservas_auto():
         if devolvidas_auto > 0 or processadas_reservas > 0 or adiadas > 0:
             cache.clear()
         
-        # Log do resultado
-        resultado = f"Processamento automático - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Devoluções: {devolvidas_auto}, Reservas convertidas: {processadas_reservas}, Adiadas: {adiadas}, Erros: {erros}"
+        resultado = f"Processamento automático - Devoluções: {devolvidas_auto}, Reservas convertidas: {processadas_reservas}, Adiadas: {adiadas}, Erros: {erros}"
         print(resultado)
         
         return {
@@ -220,13 +219,12 @@ def processar_reservas_auto():
             "processadas": processadas_reservas,
             "adiadas": adiadas,
             "erros": erros,
-            "mensagem": f"Devoluções automáticas: {devolvidas_auto} | Reservas convertidas: {processadas_reservas} | Adiadas: {adiadas}"
+            "mensagem": f"Devoluções: {devolvidas_auto} | Reservas convertidas: {processadas_reservas} | Adiadas: {adiadas}"
         }
         
     except Exception as e:
         print(f"Erro crítico no processamento automático: {str(e)}")
         return {"success": False, "error": str(e)}
-
 # ==================== FUNÇÕES OTIMIZADAS ====================
 def get_todos_dados():
     """Busca TODOS os dados de uma vez e processa em memória com cache"""
@@ -1236,14 +1234,15 @@ def inject_global_variables():
 
 # ==================== PDF ====================
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from io import BytesIO
 from flask import make_response
 import urllib.parse
 from collections import defaultdict
+import os
 
 def formatar_data(data_str):
     if not data_str:
@@ -1258,9 +1257,25 @@ def formatar_data(data_str):
     except:
         return data_str
 
+def criar_cabecalho_sem_texto():
+    """Cria apenas a logo em formato retangular largo"""
+    elements = []
+    
+    # Logo retangular: largura 16cm, altura 3cm
+    logo_path = "static/logo_pdf.png"
+    if os.path.exists(logo_path):
+        try:
+            logo = Image(logo_path, width=16*cm, height=3*cm)
+            elements.append(logo)
+            elements.append(Spacer(1, 0.5*cm))
+        except Exception as e:
+            print(f"⚠️ Erro ao carregar logo: {e}")
+    
+    return elements
+
 @app.route("/ocorrencias/pdf/turma/<turma>")
 @login_required
-def pdf_por_turma(turma):
+def pdf_por_turma_relatorio(turma):
     if session['role'] != 'admin':
         flash("Acesso negado. Apenas administradores podem gerar PDFs.", "error")
         return redirect(url_for("listar_ocorrencias"))
@@ -1277,64 +1292,56 @@ def pdf_por_turma(turma):
         return redirect(url_for("listar_ocorrencias"))
     
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, 
-                           rightMargin=1.2*cm, leftMargin=1.2*cm, 
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), 
+                           rightMargin=1*cm, leftMargin=1*cm, 
                            topMargin=1.5*cm, bottomMargin=1.5*cm)
     
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], 
-                                  fontSize=18, alignment=1, 
+                                  fontSize=16, alignment=1, 
                                   textColor=colors.HexColor('#00796b'),
-                                  spaceAfter=12)
-    subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], 
-                                     fontSize=9, alignment=1, 
-                                     textColor=colors.black, spaceAfter=15)
-    normal_style = ParagraphStyle('Normal', parent=styles['Normal'], fontSize=9, leading=11)
+                                  spaceAfter=8)
+    normal_style = ParagraphStyle('Normal', parent=styles['Normal'], fontSize=9, leading=12)
     data_style = ParagraphStyle('DataStyle', parent=styles['Normal'], 
-                                 fontSize=9, leading=11, alignment=0, 
+                                 fontSize=9, leading=12, alignment=0, 
                                  wordWrap='CJK', allowWidows=0, allowOrphans=0)
     
     elements = []
     
-    elements.append(Paragraph(f"Relatório de Ocorrências", title_style))
-    elements.append(Paragraph(f"Turma: {turma}", subtitle_style))
-    elements.append(Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}", subtitle_style))
-    elements.append(Spacer(1, 10))
-    
-    alunos_unicos = len(set(o["nome_aluno"] for o in ocorrencias))
-    resumo_texto = f"Total de ocorrências: {len(ocorrencias)} | Alunos envolvidos: {alunos_unicos} | Notificações: {sum(1 for o in ocorrencias if o.get('notificar_pais'))}"
-    elements.append(Paragraph(resumo_texto, normal_style))
+    elements.extend(criar_cabecalho_sem_texto())
     elements.append(Spacer(1, 15))
     
+    elements.append(Paragraph(f"Relatório de Ocorrências - Turma {turma}", title_style))
+    elements.append(Spacer(1, 20))
+    
+    # ========== ASSINATURA ACIMA DA TABELA ==========
+    elements.append(Paragraph("Assinatura do Responsável", normal_style))
+    elements.append(Spacer(1, 5))
+    elements.append(Paragraph("_________________________________________", normal_style))
+    elements.append(Spacer(1, 25))
+    
+    # Sequência: Data | Turma | Professor | Ocorrência | Observação
     data = []
     data.append([Paragraph("<b>Data</b>", normal_style),
-                 Paragraph("<b>Aluno</b>", normal_style),
+                 Paragraph("<b>Turma</b>", normal_style),
+                 Paragraph("<b>Professor</b>", normal_style),
                  Paragraph("<b>Ocorrência</b>", normal_style),
-                 Paragraph("<b>Observação</b>", normal_style),
-                 Paragraph("<b>Notificar Pais</b>", normal_style)])
+                 Paragraph("<b>Observação</b>", normal_style)])
     
     for o in ocorrencias:
         ocorrencia_text = o.get("ocorrencia", "")
-        if len(ocorrencia_text) > 120:
-            ocorrencia_text = ocorrencia_text[:117] + "..."
-        
         observacao_text = o.get("observacao", "") or "-"
-        if len(observacao_text) > 100:
-            observacao_text = observacao_text[:97] + "..."
-        
-        notificar = "✓ Sim" if o.get("notificar_pais") else "✗ Não"
         data_formatada = formatar_data(o.get("data_ocorrencia", "-"))
         
         data.append([
             Paragraph(data_formatada, data_style),
-            Paragraph(o.get("nome_aluno", "-"), normal_style),
+            Paragraph(o.get("turma", "-"), normal_style),
+            Paragraph(o.get("usuario_nome", "-"), normal_style),
             Paragraph(ocorrencia_text, normal_style),
-            Paragraph(observacao_text, normal_style),
-            Paragraph(notificar, normal_style)
+            Paragraph(observacao_text, normal_style)
         ])
     
-    col_widths = [2.2*cm, 3*cm, 5.3*cm, 4*cm, 2.2*cm]
-    
+    col_widths = [2.5*cm, 1.5*cm, 3*cm, 5*cm, 6*cm]
     table = Table(data, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#00796b')),
@@ -1343,20 +1350,15 @@ def pdf_por_turma(turma):
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('WORDWRAP', (0, 0), (-1, -1), 'CJK'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
     ]))
     
     elements.append(table)
-    elements.append(Spacer(1, 15))
-    
-    legend_style = ParagraphStyle('Legend', parent=styles['Normal'], fontSize=8, textColor=colors.grey)
-    elements.append(Paragraph("✓ Sim = Notificar os pais | ✗ Não = Não notificar", legend_style))
-    elements.append(Spacer(1, 20))
-    elements.append(Paragraph("Documento gerado automaticamente pelo Sistema de Gestão de Materiais", legend_style))
     
     doc.build(elements)
     pdf = buffer.getvalue()
@@ -1365,12 +1367,12 @@ def pdf_por_turma(turma):
     response = make_response(pdf)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'inline; filename=ocorrencias_{turma}_{datetime.now().strftime("%Y%m%d")}.pdf'
-    
     return response
+
 
 @app.route("/ocorrencias/pdf/aluno/<nome_aluno>")
 @login_required
-def pdf_por_aluno(nome_aluno):
+def pdf_por_aluno_relatorio(nome_aluno):
     if session['role'] != 'admin':
         flash("Acesso negado. Apenas administradores podem gerar PDFs.", "error")
         return redirect(url_for("listar_ocorrencias"))
@@ -1388,61 +1390,56 @@ def pdf_por_aluno(nome_aluno):
         return redirect(url_for("listar_ocorrencias"))
     
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, 
-                           rightMargin=1.2*cm, leftMargin=1.2*cm, 
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), 
+                           rightMargin=1*cm, leftMargin=1*cm, 
                            topMargin=1.5*cm, bottomMargin=1.5*cm)
     
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], 
-                                  fontSize=18, alignment=1, 
+                                  fontSize=16, alignment=1, 
                                   textColor=colors.HexColor('#00796b'),
-                                  spaceAfter=12)
-    subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], 
-                                     fontSize=9, alignment=1, 
-                                     textColor=colors.black, spaceAfter=15)
-    normal_style = ParagraphStyle('Normal', parent=styles['Normal'], fontSize=9, leading=11)
+                                  spaceAfter=8)
+    normal_style = ParagraphStyle('Normal', parent=styles['Normal'], fontSize=9, leading=12)
     data_style = ParagraphStyle('DataStyle', parent=styles['Normal'], 
-                                 fontSize=9, leading=11, alignment=0, 
+                                 fontSize=9, leading=12, alignment=0, 
                                  wordWrap='CJK', allowWidows=0, allowOrphans=0)
     
     elements = []
     
-    elements.append(Paragraph(f"Relatório de Ocorrências", title_style))
-    elements.append(Paragraph(f"Aluno: {nome_aluno}", subtitle_style))
-    elements.append(Paragraph(f"Turma: {ocorrencias[0].get('turma', '-')}", subtitle_style))
-    elements.append(Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}", subtitle_style))
-    elements.append(Spacer(1, 10))
-    
-    resumo_texto = f"Total de ocorrências: {len(ocorrencias)} | Notificações: {sum(1 for o in ocorrencias if o.get('notificar_pais'))}"
-    elements.append(Paragraph(resumo_texto, normal_style))
+    elements.extend(criar_cabecalho_sem_texto())
     elements.append(Spacer(1, 15))
     
+    elements.append(Paragraph(f"Relatório de Ocorrências - Aluno: {nome_aluno}", title_style))
+    elements.append(Spacer(1, 20))
+    
+    # ========== ASSINATURA ACIMA DA TABELA ==========
+    elements.append(Paragraph("Assinatura do Responsável", normal_style))
+    elements.append(Spacer(1, 5))
+    elements.append(Paragraph("_________________________________________", normal_style))
+    elements.append(Spacer(1, 25))
+    
+    # Sequência: Data | Turma | Professor | Ocorrência | Observação
     data = []
     data.append([Paragraph("<b>Data</b>", normal_style),
+                 Paragraph("<b>Turma</b>", normal_style),
+                 Paragraph("<b>Professor</b>", normal_style),
                  Paragraph("<b>Ocorrência</b>", normal_style),
-                 Paragraph("<b>Observação</b>", normal_style),
-                 Paragraph("<b>Notificar Pais</b>", normal_style)])
+                 Paragraph("<b>Observação</b>", normal_style)])
     
     for o in ocorrencias:
         ocorrencia_text = o.get("ocorrencia", "")
-        if len(ocorrencia_text) > 120:
-            ocorrencia_text = ocorrencia_text[:117] + "..."
-        
         observacao_text = o.get("observacao", "") or "-"
-        if len(observacao_text) > 100:
-            observacao_text = observacao_text[:97] + "..."
-        
-        notificar = "✓ Sim" if o.get("notificar_pais") else "✗ Não"
         data_formatada = formatar_data(o.get("data_ocorrencia", "-"))
         
         data.append([
             Paragraph(data_formatada, data_style),
+            Paragraph(o.get("turma", "-"), normal_style),
+            Paragraph(o.get("usuario_nome", "-"), normal_style),
             Paragraph(ocorrencia_text, normal_style),
-            Paragraph(observacao_text, normal_style),
-            Paragraph(notificar, normal_style)
+            Paragraph(observacao_text, normal_style)
         ])
     
-    col_widths = [2.2*cm, 8*cm, 5.3*cm, 2.2*cm]
+    col_widths = [2.5*cm, 1.5*cm, 3*cm, 5.5*cm, 6*cm]
     table = Table(data, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#00796b')),
@@ -1451,19 +1448,12 @@ def pdf_por_aluno(nome_aluno):
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('WORDWRAP', (0, 0), (-1, -1), 'CJK'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
     
     elements.append(table)
-    elements.append(Spacer(1, 15))
-    
-    legend_style = ParagraphStyle('Legend', parent=styles['Normal'], fontSize=8, textColor=colors.grey)
-    elements.append(Paragraph("✓ Sim = Notificar os pais | ✗ Não = Não notificar", legend_style))
-    elements.append(Spacer(1, 20))
-    elements.append(Paragraph("Documento gerado automaticamente pelo Sistema de Gestão de Materiais", legend_style))
     
     doc.build(elements)
     pdf = buffer.getvalue()
@@ -1472,12 +1462,12 @@ def pdf_por_aluno(nome_aluno):
     response = make_response(pdf)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'inline; filename=ocorrencias_{nome_aluno}_{datetime.now().strftime("%Y%m%d")}.pdf'
-    
     return response
+
 
 @app.route("/ocorrencias/pdf/todas")
 @login_required
-def pdf_todas_ocorrencias():
+def pdf_todas_ocorrencias_relatorio():
     if session['role'] != 'admin':
         flash("Acesso negado. Apenas administradores podem gerar PDFs.", "error")
         return redirect(url_for("listar_ocorrencias"))
@@ -1498,62 +1488,63 @@ def pdf_todas_ocorrencias():
         por_turma[o["turma"]].append(o)
     
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, 
-                           rightMargin=1.2*cm, leftMargin=1.2*cm, 
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), 
+                           rightMargin=1*cm, leftMargin=1*cm, 
                            topMargin=1.5*cm, bottomMargin=1.5*cm)
     
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], 
-                                  fontSize=18, alignment=1, 
+                                  fontSize=16, alignment=1, 
                                   textColor=colors.HexColor('#00796b'),
-                                  spaceAfter=12)
-    subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], 
-                                     fontSize=9, alignment=1, 
-                                     textColor=colors.black, spaceAfter=15)
+                                  spaceAfter=8)
     turma_style = ParagraphStyle('TurmaTitle', parent=styles['Heading2'], 
-                                  fontSize=14, textColor=colors.HexColor('#00796b'),
+                                  fontSize=12, textColor=colors.HexColor('#00796b'),
                                   spaceAfter=10, spaceBefore=15)
-    normal_style = ParagraphStyle('Normal', parent=styles['Normal'], fontSize=9, leading=11)
+    normal_style = ParagraphStyle('Normal', parent=styles['Normal'], fontSize=9, leading=12)
     data_style = ParagraphStyle('DataStyle', parent=styles['Normal'], 
-                                 fontSize=9, leading=11, alignment=0, 
+                                 fontSize=9, leading=12, alignment=0, 
                                  wordWrap='CJK', allowWidows=0, allowOrphans=0)
     
     elements = []
+    elements.extend(criar_cabecalho_sem_texto())
+    elements.append(Spacer(1, 15))
     
     elements.append(Paragraph("Relatório Geral de Ocorrências", title_style))
-    elements.append(Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}", subtitle_style))
-    elements.append(Spacer(1, 10))
-    
-    total_alunos = len(set(o["nome_aluno"] for o in todas))
-    resumo_texto = f"Total de ocorrências: {len(todas)} | Turmas: {len(por_turma)} | Alunos envolvidos: {total_alunos}"
-    elements.append(Paragraph(resumo_texto, normal_style))
     elements.append(Spacer(1, 20))
     
     for turma in sorted(por_turma.keys()):
         elements.append(Paragraph(f"Turma {turma}", turma_style))
         
+        # ========== ASSINATURA ACIMA DA TABELA (apenas na primeira turma ou antes de cada?) 
+        # Vamos colocar antes da primeira turma apenas
+        if loop.first:
+            elements.append(Paragraph("Assinatura do Responsável", normal_style))
+            elements.append(Spacer(1, 5))
+            elements.append(Paragraph("_________________________________________", normal_style))
+            elements.append(Spacer(1, 25))
+        
+        # Sequência: Data | Aluno | Professor | Ocorrência | Observação
         data = []
         data.append([Paragraph("<b>Data</b>", normal_style),
                      Paragraph("<b>Aluno</b>", normal_style),
+                     Paragraph("<b>Professor</b>", normal_style),
                      Paragraph("<b>Ocorrência</b>", normal_style),
-                     Paragraph("<b>Notificar Pais</b>", normal_style)])
+                     Paragraph("<b>Observação</b>", normal_style)])
         
         for o in por_turma[turma]:
             ocorrencia_text = o.get("ocorrencia", "")
-            if len(ocorrencia_text) > 120:
-                ocorrencia_text = ocorrencia_text[:117] + "..."
-            
-            notificar = "✓ Sim" if o.get("notificar_pais") else "✗ Não"
+            observacao_text = o.get("observacao", "") or "-"
             data_formatada = formatar_data(o.get("data_ocorrencia", "-"))
             
             data.append([
                 Paragraph(data_formatada, data_style),
                 Paragraph(o.get("nome_aluno", "-"), normal_style),
+                Paragraph(o.get("usuario_nome", "-"), normal_style),
                 Paragraph(ocorrencia_text, normal_style),
-                Paragraph(notificar, normal_style)
+                Paragraph(observacao_text, normal_style)
             ])
         
-        col_widths = [2.2*cm, 3*cm, 9.3*cm, 2.2*cm]
+        col_widths = [2.2*cm, 2.5*cm, 2.8*cm, 5.5*cm, 6*cm]
         table = Table(data, colWidths=col_widths, repeatRows=1)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#00796b')),
@@ -1562,19 +1553,13 @@ def pdf_todas_ocorrencias():
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('WORDWRAP', (0, 0), (-1, -1), 'CJK'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]))
         
         elements.append(table)
-        elements.append(Spacer(1, 10))
-    
-    legend_style = ParagraphStyle('Legend', parent=styles['Normal'], fontSize=8, textColor=colors.grey)
-    elements.append(Paragraph("✓ Sim = Notificar os pais | ✗ Não = Não notificar", legend_style))
-    elements.append(Spacer(1, 20))
-    elements.append(Paragraph("Documento gerado automaticamente pelo Sistema de Gestão de Materiais", legend_style))
+        elements.append(Spacer(1, 15))
     
     doc.build(elements)
     pdf = buffer.getvalue()
@@ -1583,7 +1568,6 @@ def pdf_todas_ocorrencias():
     response = make_response(pdf)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'inline; filename=ocorrencias_todas_{datetime.now().strftime("%Y%m%d")}.pdf'
-    
     return response
 
 if __name__ == "__main__":
