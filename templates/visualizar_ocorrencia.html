@@ -105,8 +105,8 @@
             <a class="btn" href="{{ url_for('editar_ocorrencia', ocorrencia_id=ocorrencia.id) }}">✏️ Editar</a>
             {% endif %}
             {% if session.role == 'admin' %}
-            <a class="btn" href="{{ url_for('pdf_por_aluno', nome_aluno=ocorrencia.nome_aluno) }}" target="_blank" style="background: var(--danger);">📄 PDF do Aluno</a>
-            <a class="btn" href="{{ url_for('pdf_por_turma', turma=ocorrencia.turma) }}" target="_blank" style="background: var(--danger);">📄 PDF da Turma</a>
+            <a class="btn" href="{{ url_for('pdf_por_aluno_relatorio', nome_aluno=ocorrencia.nome_aluno) }}" target="_blank" style="background: var(--danger);">📄 PDF do Aluno</a>
+            <a class="btn" href="{{ url_for('pdf_por_turma_relatorio', turma=ocorrencia.turma) }}" target="_blank" style="background: var(--danger);">📄 PDF da Turma</a>
             {% endif %}
         </div>
     </div>

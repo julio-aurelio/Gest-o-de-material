@@ -161,7 +161,7 @@
                 <div style="display: flex; gap: 10px;">
                     <a id="pdfBtnTurma" href="#" class="btn" target="_blank"
                         style="background: var(--danger); padding: 10px 20px;">📄 Gerar PDF da Turma</a>
-                    <a href="{{ url_for('pdf_todas_ocorrencias') }}" target="_blank" class="btn"
+                    <a href="{{ url_for('pdf_todas_ocorrencias_relatorio') }}" target="_blank" class="btn"
                         style="background: var(--danger); padding: 10px 20px;">📄 Gerar PDF de Todas</a>
                 </div>
             </div>
@@ -294,7 +294,7 @@
         function updatePdfLink() {
             const turma = turmaSelect.value;
             if (turma) {
-                pdfBtnTurma.href = `/ocorrencias/pdf/turma/${encodeURIComponent(turma)}`;
+                pdfBtnTurma.href = `/ocorrencias/pdf/turma_relatorio/${encodeURIComponent(turma)}`;
                 pdfBtnTurma.style.display = 'inline-block';
                 pdfBtnTurma.style.opacity = '1';
                 pdfBtnTurma.style.pointerEvents = 'auto';
