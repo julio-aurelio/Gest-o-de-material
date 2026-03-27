@@ -53,7 +53,9 @@
             </a>
         </nav>
 
-        <form method="post">
+        <form method="post" id="ocorrenciaForm">
+            <input type="hidden" name="form_token" value="{{ form_token }}">
+            
             <div class="info-box" style="background: #e8f5e9; margin-bottom: 20px;">
                 <p><strong>👨‍🏫 Professor responsável:</strong> {{ session.usuario_nome }}</p>
                 <p><strong>📅 Data:</strong> {{ datetime.now().strftime("%d/%m/%Y") }}</p>
@@ -100,13 +102,14 @@
                 <span>📢 Notificar os pais sobre esta ocorrência</span>
             </label>
 
-            <button type="submit">✅ Registrar Ocorrência</button>
+            <button type="submit" id="submitBtn">✅ Registrar Ocorrência</button>
         </form>
 
         <a class="btn" href="{{ url_for('listar_ocorrencias') }}" style="margin-top: 20px;">⬅️ Voltar</a>
     </div>
 
     <script>
+        // Função para selecionar tipo de ocorrência
         function selecionarTipo(tipoId) {
             const radio = document.getElementById('tipo_' + tipoId);
             radio.checked = true;
@@ -119,10 +122,97 @@
             }
         }
         
+        // Verificar se "Outros" está marcado ao carregar
         const outrosRadio = document.getElementById('tipo_outros');
         if (outrosRadio && outrosRadio.checked) {
             document.getElementById('descricaoOutros').classList.add('active');
         }
+
+        // ==================== PREVENÇÃO DE MÚLTIPLOS ENVIOS ====================
+        (function() {
+            let formSubmitted = false;
+            const form = document.getElementById('ocorrenciaForm');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            if (!form || !submitBtn) return;
+            
+            // Salvar texto original do botão
+            const originalButtonText = submitBtn.innerHTML;
+            
+            // Função para desabilitar o botão
+            function disableButton() {
+                if (submitBtn.disabled) return;
+                
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '⏳ Salvando...';
+            }
+            
+            // Função para reabilitar o botão
+            function enableButton() {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalButtonText;
+                formSubmitted = false;
+            }
+            
+            // Interceptar o envio do formulário
+            form.addEventListener('submit', function(event) {
+                // Se já foi enviado, cancelar
+                if (formSubmitted) {
+                    event.preventDefault();
+                    return false;
+                }
+                
+                // Validar campos obrigatórios
+                const nomeAluno = document.getElementById('nome_aluno');
+                if (!nomeAluno.value.trim()) {
+                    event.preventDefault();
+                    alert('Por favor, informe o nome do aluno.');
+                    return false;
+                }
+                
+                // Validar se é "Outros" e tem descrição
+                const tipoOutros = document.getElementById('tipo_outros');
+                const descricaoOutros = document.getElementById('descricao_personalizada');
+                
+                if (tipoOutros && tipoOutros.checked && (!descricaoOutros.value.trim())) {
+                    event.preventDefault();
+                    alert('Por favor, descreva a ocorrência para a opção "Outros".');
+                    return false;
+                }
+                
+                // Marcar como enviado
+                formSubmitted = true;
+                
+                // Desabilitar botão
+                disableButton();
+                
+                // Fallback: reabilitar após 10 segundos em caso de erro
+                setTimeout(function() {
+                    if (submitBtn.disabled) {
+                        enableButton();
+                    }
+                }, 10000);
+                
+                // O formulário será enviado normalmente
+                return true;
+            });
+            
+            // Prevenir múltiplos cliques no botão
+            submitBtn.addEventListener('click', function(event) {
+                if (formSubmitted) {
+                    event.preventDefault();
+                    return false;
+                }
+            });
+            
+            // Se houver erro de validação no servidor (flash messages), reabilitar o botão
+            const flashMessages = document.querySelectorAll('.flash');
+            if (flashMessages.length > 0) {
+                setTimeout(function() {
+                    enableButton();
+                }, 100);
+            }
+        })();
     </script>
 </body>
 </html>

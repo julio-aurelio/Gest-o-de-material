@@ -6,6 +6,7 @@ from functools import wraps
 import time
 from threading import Lock
 from collections import defaultdict
+import secrets  # NOVA IMPORTAÇÃO
 
 app = Flask(__name__)
 
@@ -53,6 +54,38 @@ class SimpleCache:
                 del self.cache[key]
 
 cache = SimpleCache(default_timeout=300)  # 5 minutos
+
+# ==================== FUNÇÕES ANTI-DUPLICAÇÃO ====================
+def generate_form_token():
+    """Gera um token único para o formulário"""
+    token = secrets.token_urlsafe(32)
+    session['form_token'] = token
+    session['form_token_time'] = datetime.now().isoformat()
+    return token
+
+def validate_form_token():
+    """Valida o token do formulário e previne duplicação"""
+    token = request.form.get('form_token')
+    stored_token = session.get('form_token')
+    token_time = session.get('form_token_time')
+    
+    # Verifica se token existe e é válido
+    if not token or not stored_token or token != stored_token:
+        return False
+    
+    # Verifica se o token não expirou (5 minutos)
+    if token_time:
+        try:
+            token_dt = datetime.fromisoformat(token_time)
+            if datetime.now() - token_dt > timedelta(minutes=5):
+                return False
+        except:
+            pass
+    
+    # Remove o token após uso para evitar reuso
+    session.pop('form_token', None)
+    session.pop('form_token_time', None)
+    return True
 
 # ==================== DECORADORES ====================
 def login_required(f):
@@ -138,8 +171,6 @@ def processar_reservas_auto():
         erros = 0
         
         # ========== 1. PROCESSAR DEVOLUÇÕES VENCIDAS ==========
-        # Buscar empréstimos ativos com data de devolução prevista < hoje
-        # E SOMENTE aqueles que têm data_devolucao_prevista preenchida
         emprestimos_vencidos = supabase.table("emprestimos")\
             .select("*")\
             .is_("data_devolucao_real", "null")\
@@ -175,7 +206,6 @@ def processar_reservas_auto():
                 )
                 
                 if disponivel >= reserva["quantidade_reservada"]:
-                    # Converter reserva em empréstimo
                     data_devolucao_prevista = (datetime.strptime(reserva["data_retirada"], "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
                     
                     supabase.table("emprestimos").insert({
@@ -196,7 +226,6 @@ def processar_reservas_auto():
                     processadas_reservas += 1
                     print(f"Reserva convertida: {reserva['aluno']} - Material {reserva['material_id']} para {data_devolucao_prevista}")
                 else:
-                    # Adiar para amanhã
                     amanha = (datetime.strptime(reserva["data_retirada"], "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
                     supabase.table("reservas").update({"data_retirada": amanha}).eq("id", reserva["id"]).execute()
                     adiadas += 1
@@ -206,11 +235,9 @@ def processar_reservas_auto():
                 erros += 1
                 print(f"Erro ao processar reserva {reserva.get('id')}: {str(e)}")
         
-        # Limpar cache após processar
         if devolvidas_auto > 0 or processadas_reservas > 0 or adiadas > 0:
             cache.clear()
         
-        # Log do resultado
         resultado = f"Processamento automático - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Devoluções: {devolvidas_auto}, Reservas convertidas: {processadas_reservas}, Adiadas: {adiadas}, Erros: {erros}"
         print(resultado)
         
@@ -420,7 +447,7 @@ def index():
             resultado = processar_reservas_auto()
             if resultado["success"] and (resultado["devolvidas_auto"] > 0 or resultado["processadas"] > 0 or resultado["adiadas"] > 0):
                 flash(f"📅 Processamento automático: {resultado['mensagem']}", "info")
-            cache.set(cache_key_processado, True, timeout=86400)  # 24 horas
+            cache.set(cache_key_processado, True, timeout=86400)
         
         dados = get_todos_dados()
         return render_template(
@@ -441,7 +468,6 @@ def index():
 @app.route("/api/cron/processar-reservas", methods=["GET", "POST"])
 @cron_required
 def cron_processar_reservas():
-    """Endpoint para ser chamado por GitHub Actions"""
     try:
         resultado = processar_reservas_auto()
         return jsonify(resultado), 200
@@ -452,7 +478,6 @@ def cron_processar_reservas():
 @app.route("/processar_reservas")
 @admin_required
 def processar_reservas_manual():
-    """Processa reservas manualmente (acesso apenas admin)"""
     try:
         resultado = processar_reservas_auto()
         if resultado["success"]:
@@ -736,7 +761,6 @@ def autocomplete():
 @app.route("/emprestimos_ativos")
 @login_required
 def emprestimos_ativos():
-    """Lista apenas empréstimos que ainda não foram devolvidos"""
     cache_key = "emprestimos_ativos_list"
     cached = cache.get(cache_key)
     
@@ -750,7 +774,6 @@ def emprestimos_ativos():
     dados = get_todos_dados()
     total_materiais = dados['total_materiais']
     
-    # Só busca empréstimos com data_devolucao_real = null (não devolvidos)
     emprestimos = supabase.table("emprestimos").select("*, materiais(*), usuarios!usuario_id(nome)")\
         .is_("data_devolucao_real", "null")\
         .order("data_emprestimo")\
@@ -759,7 +782,6 @@ def emprestimos_ativos():
     for emp in emprestimos:
         if emp.get("usuarios"):
             emp["usuario_nome"] = emp["usuarios"]["nome"]
-        # Adicionar informação de atraso
         hoje = datetime.now().strftime("%Y-%m-%d")
         if emp.get("data_devolucao_prevista") and emp["data_devolucao_prevista"] < hoje:
             emp["atrasado"] = True
@@ -779,7 +801,6 @@ def emprestimos_ativos():
 @app.route("/historico_emprestimos")
 @login_required
 def historico_emprestimos():
-    """Lista histórico de todos os empréstimos (devolvidos e não devolvidos)"""
     cache_key = "historico_emprestimos_list"
     cached = cache.get(cache_key)
     
@@ -789,7 +810,6 @@ def historico_emprestimos():
                                emprestimos=emprestimos,
                                total_emprestimos=total_emprestimos)
     
-    # Busca TODOS os empréstimos (incluindo devolvidos)
     emprestimos = supabase.table("emprestimos").select("*, materiais(*), usuarios!usuario_id(nome)")\
         .order("data_emprestimo", desc=True)\
         .limit(200)\
@@ -968,7 +988,6 @@ def admin_dashboard():
     
     top_5 = sorted(materiais_count.items(), key=lambda x: x[1], reverse=True)[:5]
     
-    # CORRIGIDO: Buscar empréstimos com mais informações (incluindo turma e horário)
     ultimos_emprestimos = supabase.table("emprestimos").select(
         "*, materiais(nome), usuarios!usuario_id(nome), turma, horario, turno"
     ).order("data_emprestimo", desc=True).limit(10).execute().data
@@ -976,7 +995,6 @@ def admin_dashboard():
     for emp in ultimos_emprestimos:
         if emp.get("usuarios"):
             emp["usuario_nome"] = emp["usuarios"]["nome"]
-        # Garantir que turma e horario estão presentes
         if not emp.get("turma"):
             emp["turma"] = "-"
         if not emp.get("horario"):
@@ -1062,6 +1080,11 @@ def listar_ocorrencias():
 @login_required
 def nova_ocorrencia():
     if request.method == "POST":
+        # VALIDAÇÃO ANTI-DUPLICAÇÃO COM TOKEN
+        if not validate_form_token():
+            flash("Erro de validação. Por favor, tente novamente.", "error")
+            return redirect(url_for("nova_ocorrencia"))
+        
         nome_aluno = request.form["nome_aluno"].strip()
         turma = request.form["turma"]
         tipo_ocorrencia = request.form.get("tipo_ocorrencia", "outros")
@@ -1072,6 +1095,22 @@ def nova_ocorrencia():
         if not nome_aluno:
             flash("Nome do aluno é obrigatório.", "error")
             return redirect(url_for("nova_ocorrencia"))
+        
+        # VERIFICAÇÃO DE DUPLICATA NOS ÚLTIMOS 10 SEGUNDOS
+        dez_segundos_atras = (datetime.now() - timedelta(seconds=10)).strftime("%Y-%m-%d %H:%M:%S")
+        
+        duplicata = supabase.table("ocorrencias")\
+            .select("id")\
+            .eq("nome_aluno", nome_aluno)\
+            .eq("turma", turma)\
+            .eq("tipo_ocorrencia", tipo_ocorrencia)\
+            .gte("created_at", dez_segundos_atras)\
+            .eq("usuario_id", session['usuario_id'])\
+            .execute().data
+        
+        if duplicata:
+            flash("Essa ocorrência já foi registrada recentemente. Aguarde alguns segundos.", "warning")
+            return redirect(url_for("listar_ocorrencias"))
         
         if tipo_ocorrencia == "outros" and descricao_personalizada:
             ocorrencia_text = descricao_personalizada
@@ -1098,11 +1137,14 @@ def nova_ocorrencia():
         flash("Ocorrência registrada com sucesso!", "success")
         return redirect(url_for("listar_ocorrencias"))
     
+    # Para GET, gera um novo token
+    token = generate_form_token()
     return render_template("nova_ocorrencia.html", 
                          turmas_manha=TURMAS_MANHA, 
                          turmas_tarde=TURMAS_TARDE, 
                          datetime=datetime,
-                         tipos_ocorrencia=TIPOS_OCORRENCIA)
+                         tipos_ocorrencia=TIPOS_OCORRENCIA,
+                         form_token=token)
 
 @app.route("/ocorrencias/editar/<int:ocorrencia_id>", methods=["GET", "POST"])
 @login_required
