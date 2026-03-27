@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Login - Gestão de Materiais</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
+
 <body>
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -22,20 +24,42 @@
             <h1>📚 Sistema de Gestão</h1>
             <p>Faça login para continuar</p>
         </div>
-        
+
         <form method="post">
             <input type="email" name="email" placeholder="Email" required>
             <input type="password" name="senha" placeholder="Senha" required>
             <button type="submit" class="login-btn">Entrar</button>
         </form>
-        
+
         <div style="text-align: center; margin-top: 20px;">
-            <a href="{{ url_for('cadastrar_professor') }}" style="color: var(--primary);">Não tem uma conta? Cadastre-se</a>
+            <a href="{{ url_for('cadastrar_professor') }}" style="color: var(--primary);">Não tem uma conta?
+                Cadastre-se</a>
         </div>
-        
-        <div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: var(--gray);">
+
+        <div
+            style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: var(--gray);">
             <p>👨‍🏫 Professores: <a href="{{ url_for('cadastrar_professor') }}">Crie sua conta</a></p>
         </div>
     </div>
+    <script>
+        let formEnviado = false;
+
+        document.querySelector('form').addEventListener('submit', function (e) {
+            if (formEnviado) {
+                e.preventDefault();
+                alert('⚠️ Aguarde! Login já sendo processado.');
+                return false;
+            }
+
+            formEnviado = true;
+
+            const btnSubmit = this.querySelector('button[type="submit"]');
+            if (btnSubmit) {
+                btnSubmit.disabled = true;
+                btnSubmit.textContent = '🔄 Entrando...';
+            }
+        });
+    </script>
 </body>
+
 </html>

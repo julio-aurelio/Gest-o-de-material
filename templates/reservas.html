@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Materiais Reservados</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
+
 <body>
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -35,7 +37,7 @@
                 <a href="{{ url_for('logout') }}" class="logout-link">🚪 Sair</a>
             </div>
         </div>
-        
+
         <div class="stats-bar">
             ⏳ Total de reservas: <strong>{{ total_reservas }}</strong>
         </div>
@@ -56,6 +58,26 @@
                 {% endif %}
             </a>
         </nav>
+        {% if session.role == 'admin' %}
+        <div style="margin-top: 20px; text-align: center;">
+            <form action="{{ url_for('converter_todas_reservas') }}" method="POST"
+                style="display: inline-block; margin: 5px;"
+                onsubmit="return confirm('⚠️ ATENÇÃO! Isso vai converter TODAS as reservas em empréstimos. Deseja continuar?')">
+                <button type="submit" class="btn" style="background: var(--warning);">🔄 CONVERTER TODAS AS
+                    RESERVAS</button>
+            </form>
+
+            <form action="{{ url_for('desfazer_conversao') }}" method="POST" style="display: inline-block; margin: 5px;"
+                onsubmit="return confirm('⚠️ ATENÇÃO! Isso vai desfazer os empréstimos criados hoje e transformá-los de volta em reservas. Deseja continuar?')">
+                <button type="submit" class="btn" style="background: var(--danger);">🔙 DESFAZER CONVERSÃO DE
+                    HOJE</button>
+            </form>
+        </div>
+        {% endif %}
+
+
+
+        <br><br>
 
         {% if reservas %}
         <ul>
@@ -67,14 +89,16 @@
                 <p><strong>Especificações:</strong> {{ res.materiais.especificacoes }}</p>
                 {% endif %}
                 <span class="reservado">👤 Reservado para {{ res.aluno }} ({{ res.turma }})</span>
-                <p><strong>👨‍🏫 Professor responsável:</strong> {{ res.usuario_nome or res.aluno or 'Não identificado' }}</p>
+                <p><strong>👨‍🏫 Professor responsável:</strong> {{ res.usuario_nome or res.aluno or 'Não identificado'
+                    }}</p>
                 <p><strong>📅 Data da reserva:</strong> {{ res.data_reserva[:10] }}</p>
                 <p><strong>📆 Data de retirada:</strong> {{ res.data_retirada }}</p>
                 <p><strong>⏰ Horário:</strong> {{ res.horario }}</p>
                 <p><strong>📦 Quantidade reservada:</strong> {{ res.quantidade_reservada }} unidade(s)</p>
                 <p><strong>🕐 Turno:</strong> {{ res.turno }}</p>
-                <p><small>⚠️ Será emprestado no dia {{ res.data_retirada }} assim que o material estiver disponível</small></p>
-                
+                <p><small>⚠️ Será emprestado no dia {{ res.data_retirada }} assim que o material estiver
+                        disponível</small></p>
+
                 <!-- Botões de editar/cancelar - só aparece para quem criou ou admin -->
                 {% if session.role == 'admin' or res.usuario_id == session.usuario_id %}
                 <div style="margin-top: 10px;">
@@ -84,6 +108,7 @@
                 {% endif %}
             </li>
             {% endfor %}
+
         </ul>
         {% else %}
         <div style="text-align: center; padding: 50px;">
@@ -103,4 +128,5 @@
         }
     </script>
 </body>
+
 </html>

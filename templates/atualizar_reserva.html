@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Atualizar Reserva</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
+
 <body>
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -52,7 +54,7 @@
                 {% endif %}
             </a>
         </nav>
-        
+
         <div class="info-box">
             <h3>{{ reserva.materiais.nome }}</h3>
             <p><strong>Aluno:</strong> {{ reserva.aluno }} ({{ reserva.turma }})</p>
@@ -64,26 +66,46 @@
 
         <form method="post">
             <label for="data_retirada">Nova Data de Retirada:</label>
-            <input type="date" name="data_retirada" id="data_retirada" value="{{ reserva.data_retirada }}" min="{{ hoje }}" required>
-            
+            <input type="date" name="data_retirada" id="data_retirada" value="{{ reserva.data_retirada }}"
+                min="{{ hoje }}" required>
+
             <label for="horario">Novo Horário:</label>
             <select name="horario" required>
                 {% for i in range(horarios|length) %}
-                <option value="{{ i }}" {% if reserva.horario == horarios[i] %}selected{% endif %}>
+                <option value="{{ i }}" {% if reserva.horario==horarios[i] %}selected{% endif %}>
                     {{ horarios[i] }}
                 </option>
                 {% endfor %}
             </select>
-            
-            <input type="submit" value="💾 Salvar Alterações">
+
+            <button type="submit">💾 Salvar Alterações</button>
         </form>
 
         <a class="btn" href="{{ url_for('reservas') }}" style="margin-top: 20px;">❌ Cancelar</a>
     </div>
-    
+
     <script>
         const hoje = new Date().toISOString().split('T')[0];
         document.getElementById('data_retirada').min = hoje;
+
+        let formEnviado = false;
+
+        document.querySelector('form').addEventListener('submit', function (e) {
+            if (formEnviado) {
+                e.preventDefault();
+                alert('⚠️ Aguarde! A reserva já está sendo atualizada.');
+                return false;
+            }
+
+            formEnviado = true;
+
+            const btnSubmit = this.querySelector('button[type="submit"]');
+            if (btnSubmit) {
+                btnSubmit.disabled = true;
+                btnSubmit.textContent = '🔄 Atualizando...';
+            }
+        });
     </script>
 </body>
+
 </html>

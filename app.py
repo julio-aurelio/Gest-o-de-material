@@ -6,7 +6,7 @@ from functools import wraps
 import time
 from threading import Lock
 from collections import defaultdict
-import secrets  # NOVA IMPORTAÇÃO
+import secrets
 
 app = Flask(__name__)
 
@@ -20,7 +20,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ==================== CACHE OTIMIZADO COM TTL ====================
 class SimpleCache:
-    def __init__(self, default_timeout=300):  # 5 minutos padrão
+    def __init__(self, default_timeout=300):
         self.cache = {}
         self.lock = Lock()
         self.default_timeout = default_timeout
@@ -53,27 +53,23 @@ class SimpleCache:
             if key in self.cache:
                 del self.cache[key]
 
-cache = SimpleCache(default_timeout=300)  # 5 minutos
+cache = SimpleCache(default_timeout=300)
 
 # ==================== FUNÇÕES ANTI-DUPLICAÇÃO ====================
 def generate_form_token():
-    """Gera um token único para o formulário"""
     token = secrets.token_urlsafe(32)
     session['form_token'] = token
     session['form_token_time'] = datetime.now().isoformat()
     return token
 
 def validate_form_token():
-    """Valida o token do formulário e previne duplicação"""
     token = request.form.get('form_token')
     stored_token = session.get('form_token')
     token_time = session.get('form_token_time')
     
-    # Verifica se token existe e é válido
     if not token or not stored_token or token != stored_token:
         return False
     
-    # Verifica se o token não expirou (5 minutos)
     if token_time:
         try:
             token_dt = datetime.fromisoformat(token_time)
@@ -82,7 +78,6 @@ def validate_form_token():
         except:
             pass
     
-    # Remove o token após uso para evitar reuso
     session.pop('form_token', None)
     session.pop('form_token_time', None)
     return True
@@ -110,7 +105,6 @@ def admin_required(f):
     return decorated_function
 
 def cron_required(f):
-    """Decorator para endpoints de cron job"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         api_key = request.headers.get("X-Cron-Secret") or request.args.get("key")
@@ -156,18 +150,15 @@ def get_turno_by_turma(turma):
         return "Tarde"
     return "Manhã"
 
-# ==================== FUNÇÕES DE PROCESSAMENTO AUTOMÁTICO ====================
+# ==================== PROCESSAR RESERVAS (VERSÃO CORRIGIDA) ====================
 def processar_reservas_auto():
     """
-    Processa automaticamente:
-    1. Reservas que deveriam ser retiradas hoje ou antes
-    2. Devoluções vencidas
+    Processa automaticamente reservas e devoluções vencidas
     """
     try:
         hoje = datetime.now().strftime("%Y-%m-%d")
-        processadas_reservas = 0
-        adiadas = 0
-        devolvidas_auto = 0
+        processadas = 0
+        devolvidas = 0
         erros = 0
         
         # ========== 1. PROCESSAR DEVOLUÇÕES VENCIDAS ==========
@@ -181,85 +172,77 @@ def processar_reservas_auto():
         for emprestimo in emprestimos_vencidos:
             try:
                 supabase.table("emprestimos").update({
-                    "data_devolucao_real": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "observacao": "Devolução automática por vencimento"
+                    "data_devolucao_real": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }).eq("id", emprestimo["id"]).execute()
-                devolvidas_auto += 1
-                print(f"Devolução automática: Empréstimo {emprestimo['id']} vencido em {emprestimo['data_devolucao_prevista']}")
+                devolvidas += 1
             except Exception as e:
                 erros += 1
-                print(f"Erro ao processar devolução automática {emprestimo.get('id')}: {str(e)}")
+                print(f"Erro devolução: {e}")
         
-        # ========== 2. PROCESSAR RESERVAS (CORRIGIDO) ==========
-        # Buscar reservas com data de retirada <= hoje (hoje ou passado)
+        # ========== 2. PROCESSAR RESERVAS (CONVERTER TODAS) ==========
         reservas = supabase.table("reservas")\
             .select("*")\
             .lte("data_retirada", hoje)\
             .execute().data
         
+        print(f"🔍 Encontradas {len(reservas)} reservas para processar")
+        
         for reserva in reservas:
             try:
-                # Verificar disponibilidade para a data específica
-                disponivel = get_disponibilidade_por_horario(
-                    reserva["material_id"], 
-                    reserva["data_retirada"], 
-                    reserva["turno"], 
-                    reserva["horario"]
-                )
+                # Buscar o material
+                material = supabase.table("materiais").select("quantidade_total, nome").eq("id", reserva["material_id"]).single().execute().data
                 
-                if disponivel >= reserva["quantidade_reservada"]:
-                    data_devolucao_prevista = (datetime.strptime(reserva["data_retirada"], "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
-                    
-                    supabase.table("emprestimos").insert({
-                        "material_id": reserva["material_id"],
-                        "aluno": reserva["aluno"],
-                        "turma": reserva["turma"],
-                        "turno": reserva["turno"],
-                        "horario": reserva["horario"],
-                        "quantidade_emprestada": reserva["quantidade_reservada"],
-                        "usuario_id": reserva["usuario_id"],
-                        "usuario_nome": reserva.get("usuario_nome", ""),
-                        "data_emprestimo": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "data_emprestimo_data": reserva["data_retirada"],
-                        "data_devolucao_prevista": data_devolucao_prevista
-                    }).execute()
-                    
-                    supabase.table("reservas").delete().eq("id", reserva["id"]).execute()
-                    processadas_reservas += 1
-                    print(f"Reserva convertida: {reserva['aluno']} - Material {reserva['material_id']}")
-                else:
-                    # Adiar para amanhã
-                    amanha = (datetime.strptime(reserva["data_retirada"], "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-                    supabase.table("reservas").update({"data_retirada": amanha}).eq("id", reserva["id"]).execute()
-                    adiadas += 1
-                    print(f"Reserva adiada: {reserva['aluno']} para {amanha}")
-                    
+                if not material:
+                    print(f"❌ Material {reserva['material_id']} não encontrado")
+                    continue
+                
+                # Calcular data de devolução (7 dias após a retirada)
+                data_devolucao_prevista = (datetime.strptime(reserva["data_retirada"], "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
+                
+                # CONVERTER RESERVA EM EMPRÉSTIMO
+                supabase.table("emprestimos").insert({
+                    "material_id": reserva["material_id"],
+                    "aluno": reserva["aluno"],
+                    "turma": reserva["turma"],
+                    "turno": reserva["turno"],
+                    "horario": reserva["horario"],
+                    "quantidade_emprestada": reserva["quantidade_reservada"],
+                    "usuario_id": reserva["usuario_id"],
+                    "usuario_nome": reserva.get("usuario_nome", ""),
+                    "data_emprestimo": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "data_emprestimo_data": reserva["data_retirada"],
+                    "data_devolucao_prevista": data_devolucao_prevista
+                }).execute()
+                
+                # Remover a reserva
+                supabase.table("reservas").delete().eq("id", reserva["id"]).execute()
+                processadas += 1
+                print(f"✅ RESERVA CONVERTIDA: {reserva['aluno']} - {material['nome']}")
+                
             except Exception as e:
                 erros += 1
-                print(f"Erro ao processar reserva {reserva.get('id')}: {str(e)}")
+                print(f"❌ Erro ao processar reserva {reserva.get('id')}: {str(e)}")
         
-        if devolvidas_auto > 0 or processadas_reservas > 0 or adiadas > 0:
+        if devolvidas > 0 or processadas > 0:
             cache.clear()
         
-        # Log do resultado
-        resultado = f"Processamento automático - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Devoluções: {devolvidas_auto}, Reservas convertidas: {processadas_reservas}, Adiadas: {adiadas}, Erros: {erros}"
+        resultado = f"Devoluções: {devolvidas} | Reservas convertidas: {processadas} | Erros: {erros}"
         print(resultado)
         
         return {
             "success": True,
-            "devolvidas_auto": devolvidas_auto,
-            "processadas": processadas_reservas,
-            "adiadas": adiadas,
+            "devolvidas": devolvidas,
+            "processadas": processadas,
             "erros": erros,
-            "mensagem": f"Devoluções: {devolvidas_auto} | Reservas convertidas: {processadas_reservas} | Adiadas: {adiadas}"
+            "mensagem": resultado
         }
         
     except Exception as e:
-        print(f"Erro crítico no processamento automático: {str(e)}")
-        return {"success": False, "error": str(e)}
+        print(f"Erro crítico: {str(e)}")
+        return {"success": False, "error": str(e), "processadas": 0, "devolvidas": 0}
+
 # ==================== FUNÇÕES OTIMIZADAS ====================
 def get_todos_dados():
-    """Busca TODOS os dados de uma vez e processa em memória com cache"""
     cache_key = "todos_dados"
     cached = cache.get(cache_key)
     if cached:
@@ -332,7 +315,6 @@ def get_todos_dados():
     return resultado
 
 def get_disponibilidade_por_horario(material_id, data, turno, horario):
-    """Obtém disponibilidade com cache"""
     cache_key = f"disp_{material_id}_{data}_{turno}_{horario}"
     cached = cache.get(cache_key)
     if cached is not None:
@@ -438,7 +420,7 @@ def cadastrar_professor():
     
     return render_template("cadastrar_professor.html")
 
-# ==================== ROTA PRINCIPAL COM PROCESSAMENTO AUTOMÁTICO ====================
+# ==================== ROTA PRINCIPAL ====================
 @app.route("/")
 @login_required
 def index():
@@ -448,7 +430,7 @@ def index():
         
         if not cache.get(cache_key_processado):
             resultado = processar_reservas_auto()
-            if resultado["success"] and (resultado["devolvidas_auto"] > 0 or resultado["processadas"] > 0 or resultado["adiadas"] > 0):
+            if resultado["success"] and (resultado["devolvidas"] > 0 or resultado["processadas"] > 0):
                 flash(f"📅 Processamento automático: {resultado['mensagem']}", "info")
             cache.set(cache_key_processado, True, timeout=86400)
         
@@ -467,7 +449,7 @@ def index():
         app.logger.error(f"Erro ao carregar dados: {str(e)}")
         return f"Erro ao carregar dados: {str(e)}", 500
 
-# ==================== ENDPOINT PARA CRON JOB EXTERNO ====================
+# ==================== ENDPOINT PARA CRON JOB ====================
 @app.route("/api/cron/processar-reservas", methods=["GET", "POST"])
 @cron_required
 def cron_processar_reservas():
@@ -484,7 +466,7 @@ def processar_reservas_manual():
     try:
         resultado = processar_reservas_auto()
         if resultado["success"]:
-            if resultado["devolvidas_auto"] > 0 or resultado["processadas"] > 0 or resultado["adiadas"] > 0:
+            if resultado["devolvidas"] > 0 or resultado["processadas"] > 0:
                 flash(f"✅ {resultado['mensagem']}", "success")
             else:
                 flash("📌 Nenhuma reserva ou devolução pendente para processar.", "info")
@@ -496,6 +478,45 @@ def processar_reservas_manual():
         flash(f"Erro ao processar: {str(e)}", "error")
     
     return redirect(url_for("index"))
+
+# ==================== CONVERTER TODAS AS RESERVAS ====================
+@app.route("/admin/converter_todas_reservas", methods=["POST"])
+@admin_required
+def converter_todas_reservas():
+    """Força a conversão de TODAS as reservas em empréstimos"""
+    try:
+        hoje = datetime.now().strftime("%Y-%m-%d")
+        convertidas = 0
+        
+        reservas = supabase.table("reservas").select("*").execute().data
+        
+        for reserva in reservas:
+            data_devolucao_prevista = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+            
+            supabase.table("emprestimos").insert({
+                "material_id": reserva["material_id"],
+                "aluno": reserva["aluno"],
+                "turma": reserva["turma"],
+                "turno": reserva["turno"],
+                "horario": reserva["horario"],
+                "quantidade_emprestada": reserva["quantidade_reservada"],
+                "usuario_id": reserva["usuario_id"],
+                "usuario_nome": reserva.get("usuario_nome", ""),
+                "data_emprestimo": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "data_emprestimo_data": hoje,
+                "data_devolucao_prevista": data_devolucao_prevista
+            }).execute()
+            
+            supabase.table("reservas").delete().eq("id", reserva["id"]).execute()
+            convertidas += 1
+        
+        cache.clear()
+        flash(f"✅ {convertidas} reservas convertidas em empréstimos!", "success")
+        
+    except Exception as e:
+        flash(f"❌ Erro: {str(e)}", "error")
+    
+    return redirect(url_for("reservas"))
 
 # ==================== CADASTRAR MATERIAL ====================
 @app.route("/cadastrar", methods=["GET", "POST"])
@@ -1083,7 +1104,6 @@ def listar_ocorrencias():
 @login_required
 def nova_ocorrencia():
     if request.method == "POST":
-        # VALIDAÇÃO ANTI-DUPLICAÇÃO COM TOKEN
         if not validate_form_token():
             flash("Erro de validação. Por favor, tente novamente.", "error")
             return redirect(url_for("nova_ocorrencia"))
@@ -1099,7 +1119,6 @@ def nova_ocorrencia():
             flash("Nome do aluno é obrigatório.", "error")
             return redirect(url_for("nova_ocorrencia"))
         
-        # VERIFICAÇÃO DE DUPLICATA NOS ÚLTIMOS 10 SEGUNDOS
         dez_segundos_atras = (datetime.now() - timedelta(seconds=10)).strftime("%Y-%m-%d %H:%M:%S")
         
         duplicata = supabase.table("ocorrencias")\
@@ -1140,7 +1159,6 @@ def nova_ocorrencia():
         flash("Ocorrência registrada com sucesso!", "success")
         return redirect(url_for("listar_ocorrencias"))
     
-    # Para GET, gera um novo token
     token = generate_form_token()
     return render_template("nova_ocorrencia.html", 
                          turmas_manha=TURMAS_MANHA, 
@@ -1305,10 +1323,7 @@ def formatar_data(data_str):
         return data_str
 
 def criar_cabecalho_sem_texto():
-    """Cria apenas a logo em formato retangular largo"""
     elements = []
-    
-    # Logo retangular: largura 16cm, altura 3cm
     logo_path = "static/logo_pdf.png"
     if os.path.exists(logo_path):
         try:
@@ -1317,7 +1332,6 @@ def criar_cabecalho_sem_texto():
             elements.append(Spacer(1, 0.5*cm))
         except Exception as e:
             print(f"⚠️ Erro ao carregar logo: {e}")
-    
     return elements
 
 @app.route("/ocorrencias/pdf/turma/<turma>")
@@ -1361,13 +1375,11 @@ def pdf_por_turma_relatorio(turma):
     elements.append(Paragraph(f"Relatório de Ocorrências - Turma {turma}", title_style))
     elements.append(Spacer(1, 20))
     
-    # ========== ASSINATURA ACIMA DA TABELA ==========
     elements.append(Paragraph("Assinatura do Responsável", normal_style))
     elements.append(Spacer(1, 5))
     elements.append(Paragraph("_________________________________________", normal_style))
     elements.append(Spacer(1, 25))
     
-    # Sequência: Data | Turma | Professor | Ocorrência | Observação
     data = []
     data.append([Paragraph("<b>Data</b>", normal_style),
                  Paragraph("<b>Turma</b>", normal_style),
@@ -1416,7 +1428,6 @@ def pdf_por_turma_relatorio(turma):
     response.headers['Content-Disposition'] = f'inline; filename=ocorrencias_{turma}_{datetime.now().strftime("%Y%m%d")}.pdf'
     return response
 
-
 @app.route("/ocorrencias/pdf/aluno/<nome_aluno>")
 @login_required
 def pdf_por_aluno_relatorio(nome_aluno):
@@ -1459,13 +1470,11 @@ def pdf_por_aluno_relatorio(nome_aluno):
     elements.append(Paragraph(f"Relatório de Ocorrências - Aluno: {nome_aluno}", title_style))
     elements.append(Spacer(1, 20))
     
-    # ========== ASSINATURA ACIMA DA TABELA ==========
     elements.append(Paragraph("Assinatura do Responsável", normal_style))
     elements.append(Spacer(1, 5))
     elements.append(Paragraph("_________________________________________", normal_style))
     elements.append(Spacer(1, 25))
     
-    # Sequência: Data | Turma | Professor | Ocorrência | Observação
     data = []
     data.append([Paragraph("<b>Data</b>", normal_style),
                  Paragraph("<b>Turma</b>", normal_style),
@@ -1510,7 +1519,6 @@ def pdf_por_aluno_relatorio(nome_aluno):
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'inline; filename=ocorrencias_{nome_aluno}_{datetime.now().strftime("%Y%m%d")}.pdf'
     return response
-
 
 @app.route("/ocorrencias/pdf/todas")
 @login_required
@@ -1562,15 +1570,12 @@ def pdf_todas_ocorrencias_relatorio():
     for turma in sorted(por_turma.keys()):
         elements.append(Paragraph(f"Turma {turma}", turma_style))
         
-        # ========== ASSINATURA ACIMA DA TABELA (apenas na primeira turma ou antes de cada?) 
-        # Vamos colocar antes da primeira turma apenas
-        if loop.first:
+        if turma == sorted(por_turma.keys())[0]:
             elements.append(Paragraph("Assinatura do Responsável", normal_style))
             elements.append(Spacer(1, 5))
             elements.append(Paragraph("_________________________________________", normal_style))
             elements.append(Spacer(1, 25))
         
-        # Sequência: Data | Aluno | Professor | Ocorrência | Observação
         data = []
         data.append([Paragraph("<b>Data</b>", normal_style),
                      Paragraph("<b>Aluno</b>", normal_style),
@@ -1616,6 +1621,48 @@ def pdf_todas_ocorrencias_relatorio():
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'inline; filename=ocorrencias_todas_{datetime.now().strftime("%Y%m%d")}.pdf'
     return response
+
+@app.route("/admin/desfazer_conversao", methods=["POST"])
+@admin_required
+def desfazer_conversao():
+    """Desfaz a conversão de empréstimos de hoje para reservas"""
+    try:
+        hoje = datetime.now().strftime("%Y-%m-%d")
+        
+        # Verificar se tem empréstimos hoje
+        emprestimos_hoje = supabase.table("emprestimos").select("*").eq("data_emprestimo_data", hoje).execute().data
+        
+        if not emprestimos_hoje:
+            flash("📌 Nenhum empréstimo criado hoje para desfazer.", "info")
+            return redirect(url_for("reservas"))
+        
+        # Converter de volta para reservas
+        for emp in emprestimos_hoje:
+            supabase.table("reservas").insert({
+                "material_id": emp["material_id"],
+                "aluno": emp["aluno"],
+                "turma": emp["turma"],
+                "turno": emp["turno"],
+                "horario": emp["horario"],
+                "quantidade_reservada": emp["quantidade_emprestada"],
+                "usuario_id": emp["usuario_id"],
+                "usuario_nome": emp.get("usuario_nome", ""),
+                "data_reserva": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "data_retirada": emp["data_emprestimo_data"],
+                "visualizada": False
+            }).execute()
+        
+        # Deletar os empréstimos
+        supabase.table("emprestimos").delete().eq("data_emprestimo_data", hoje).execute()
+        
+        cache.clear()
+        flash(f"✅ {len(emprestimos_hoje)} empréstimos revertidos para reservas!", "success")
+        
+    except Exception as e:
+        flash(f"❌ Erro: {str(e)}", "error")
+    
+    return redirect(url_for("reservas"))
+
 
 if __name__ == "__main__":
     app.run(debug=True)

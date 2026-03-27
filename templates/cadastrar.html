@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Cadastrar Material</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
+
 <body>
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -37,8 +39,9 @@
         </div>
 
         <form method="post">
-            <input type="text" name="nome" placeholder="Nome do material (ex: Bola de Futebol, Cromebook)" required autocomplete="off">
-            
+            <input type="text" name="nome" placeholder="Nome do material (ex: Bola de Futebol, Cromebook)" required
+                autocomplete="off">
+
             <label for="categoria">Categoria:</label>
             <select name="categoria" required>
                 <option value="">Selecione uma categoria</option>
@@ -46,15 +49,36 @@
                 <option value="{{ categoria }}">{{ categoria }}</option>
                 {% endfor %}
             </select>
-            
+
             <input type="number" name="quantidade" placeholder="Quantidade total" min="1" required>
-            
-            <textarea name="especificacoes" placeholder="Especificações (tamanho, cor, marca, etc.)" rows="4"></textarea>
-            
+
+            <textarea name="especificacoes" placeholder="Especificações (tamanho, cor, marca, etc.)"
+                rows="4"></textarea>
+
             <button type="submit" value="✅ Confirmar">✅ Confirmar</button>
         </form>
-        
+
         <a class="btn" href="{{ url_for('index') }}" style="margin-top: 20px;">⬅️ Voltar</a>
     </div>
+    <script>
+        let formEnviado = false;
+
+        document.querySelector('form').addEventListener('submit', function (e) {
+            if (formEnviado) {
+                e.preventDefault();
+                alert('⚠️ Aguarde! O material já está sendo cadastrado.');
+                return false;
+            }
+
+            formEnviado = true;
+
+            const btnSubmit = this.querySelector('button[type="submit"]');
+            if (btnSubmit) {
+                btnSubmit.disabled = true;
+                btnSubmit.textContent = '🔄 Cadastrando...';
+            }
+        });
+    </script>
 </body>
+
 </html>

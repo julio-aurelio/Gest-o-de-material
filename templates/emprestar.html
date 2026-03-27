@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Emprestar Material</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
+
 <body>
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -91,7 +93,8 @@
             </select>
 
             <label for="quantidade">Quantidade:</label>
-            <input type="number" name="quantidade" id="quantidade" min="1" max="{{ material['quantidade_total'] }}" value="1" required>
+            <input type="number" name="quantidade" id="quantidade" min="1" max="{{ material['quantidade_total'] }}"
+                value="1" required>
 
             <label for="data_retirada">Data de Retirada:</label>
             <input type="date" name="data_retirada" id="data_retirada" value="{{ hoje }}" min="{{ hoje }}" required>
@@ -103,7 +106,7 @@
             <div class="info-box" style="margin-top: 10px; background: #fff3e0;">
                 <p><strong>📊 Disponibilidade por horário (hoje):</strong></p>
                 {% for horario in horarios %}
-                <p>• {{ horario }}: 
+                <p>• {{ horario }}:
                     {% set disp_manha = disponibilidades.get('Manhã_' + horario, 0) %}
                     {% set disp_tarde = disponibilidades.get('Tarde_' + horario, 0) %}
                     Manhã: {{ disp_manha }} | Tarde: {{ disp_tarde }} unidades
@@ -114,13 +117,53 @@
             <button type="submit" value="✅ Confirmar">✅ Confirmar</button>
         </form>
 
-        
+
     </div>
 
     <script>
         const dataInput = document.getElementById('data_retirada');
         const hoje = new Date().toISOString().split('T')[0];
         dataInput.min = hoje;
+        // Proteção contra duplo clique e spam
+        let formEnviado = false;
+
+        document.querySelector('form').addEventListener('submit', function (e) {
+            if (formEnviado) {
+                e.preventDefault();
+                alert('⚠️ Aguarde! O formulário já está sendo processado.');
+                return false;
+            }
+
+            formEnviado = true;
+
+            // Desabilitar o botão de submit
+            const btnSubmit = this.querySelector('button[type="submit"]');
+            if (btnSubmit) {
+                btnSubmit.disabled = true;
+                btnSubmit.textContent = '🔄 Processando...';
+                btnSubmit.style.opacity = '0.6';
+            }
+
+            // Mostrar mensagem de carregamento
+            const loadingMsg = document.createElement('div');
+            loadingMsg.className = 'flash info';
+            loadingMsg.textContent = '⏳ Processando sua solicitação...';
+            loadingMsg.style.position = 'fixed';
+            loadingMsg.style.top = '20px';
+            loadingMsg.style.left = '50%';
+            loadingMsg.style.transform = 'translateX(-50%)';
+            loadingMsg.style.zIndex = '9999';
+            loadingMsg.style.background = '#00796b';
+            loadingMsg.style.color = 'white';
+            loadingMsg.style.padding = '10px 20px';
+            loadingMsg.style.borderRadius = '8px';
+            document.body.appendChild(loadingMsg);
+
+            setTimeout(() => {
+                loadingMsg.remove();
+            }, 3000);
+        });
     </script>
 </body>
+
 </html>
